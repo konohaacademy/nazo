@@ -1,0 +1,17 @@
+{
+  "name": "怪盗からの挑戦状 — D-PHONE",
+  "short_name": "D-PHONE",
+  "description": "探偵ケータイ D-PHONE で 怪盗の 暗号を とく、おうちで 遊ぶ 謎解き",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#03060c",
+  "theme_color": "#03060c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
