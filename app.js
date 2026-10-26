@@ -1,4 +1,7 @@
-// 怪盗からの挑戦状 — 探偵ケータイ D-PHONE の画面（暗号の中身は logic.js、お話は scenario.json）
+// 怪盗からの挑戦状 — 探偵ケータイ D-PHONE の画面（暗号の中身は logic.js、お話は stories/*.json）
+//
+// 事件ファイル：1つの事件＝物語（story）＋その家の準備（setup：隠し場所・seed・カギの数）＋進み具合（state）。
+// 同じ物語でも準備が違えば別の事件（捜査コードもちがう）。タイトル画面で事件をえらんで遊ぶ。
 //
 // ⚠ 記録はこの端末の localStorage だけ（名前もここにしか残らない）。
 // ⚠ iPhone はタグをかざすと Safari が別のページとして開く。Safari で遊んでいれば記録は同じなのでそのまま進む。
@@ -9,10 +12,13 @@
   var NL = window.NazoLogic;
   var $app = document.getElementById('app');
   var $layer = document.getElementById('layer');
-  var K_SETUP = 'nazo.v1.setup', K_STATE = 'nazo.v1.state', K_PREF = 'nazo.v1.pref', K_PARENT = 'nazo.v1.parent';
+  var K_CASES = 'nazo.v2.cases', K_CUR = 'nazo.v2.cur', K_PIN = 'nazo.v2.pin', K_PREF = 'nazo.v1.pref', K_PARENT = 'nazo.v1.parent';
+  // ⚠ v1（事件が1つだけだった版）の置き場。最初に開いたとき事件1へ写す（消さない）
+  var K_V1_SETUP = 'nazo.v1.setup', K_V1_STATE = 'nazo.v1.state';
+  function stateKey(id) { return 'nazo.v2.state.' + id; }
 
-  var SC = null, PRESETS = [], STEPS = [];
-  var setup = null, state = null, pref = { sound: true, autoSpeak: false };
+  var SC = null, PRESETS = [], STEPS = [], STORIES = {}, REG = [], CASES = [], kase = null, PIN = '';
+  var setup = null, state = null, pref = { sound: true, autoSpeak: false, lastName: '' };
   var route = 'title';
   var V = {};            // いまの画面だけの一時的なもの
   var tagView = null;    // タグから開いたときに出すもの
@@ -27,26 +33,48 @@
   function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* 使えない環境 */ } }
 
   function newSeed() { return (Math.floor(Math.random() * 0x7ffffffe) + 1) >>> 0; }
-  function defaultSetup() {
+  function defaultSetup(story) {
     var s = newSeed();
+    var df = (STORIES[story] && STORIES[story].defaults) || {};
     return {
-      v: 1, seed: s, pin: '', ready: false, keyNo: 10 + (s % 40),
+      v: 1, seed: s, ready: false, title: '', keyNo: 10 + (s % 40),
       modes: { tag: true, code: true, tap: false },
-      places: [{ name: '本だな', yomi: 'ほんだな', detail: '' }, { name: 'れいぞうこ', yomi: 'れいぞうこ', detail: '' }]
+      places: JSON.parse(JSON.stringify(df.places || []))
     };
   }
-  function saveSetup() { lsSet(K_SETUP, setup); PZ = null; }
+  function newCaseId() { return 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); }
+  function addCase(story, setupObj) {
+    var c = { id: newCaseId(), story: story, setup: setupObj || defaultSetup(story), createdAt: Date.now() };
+    CASES.push(c); saveCases();
+    return c;
+  }
+  function saveCases() { lsSet(K_CASES, CASES); }
+  function saveSetup() { if (kase) kase.setup = setup; saveCases(); PZ = null; }
+  function caseById(id) { for (var i = 0; i < CASES.length; i++) if (CASES[i].id === id) return CASES[i]; return null; }
+  // 遊ぶ事件を切りかえる（setup・state・お話をその事件のものにする）
+  function selectCase(id) {
+    kase = caseById(id) || CASES[0] || null;
+    if (!kase) { setup = null; state = null; SC = null; STEPS = []; return; }
+    setup = kase.setup; SC = STORIES[kase.story]; flatten(); PZ = null;
+    state = lsGet(stateKey(kase.id));
+    if (state && state.seed !== setup.seed) state = null;
+    lsSet(K_CUR, kase.id);
+  }
+  function caseState(c) { var st = lsGet(stateKey(c.id)); return st && st.seed === c.setup.seed ? st : null; }
+  function caseName(c) { return (c.setup && c.setup.title) || (STORIES[c.story] && STORIES[c.story].subtitle) || '事件'; }
   // 別のページ（タグで開いた Safari のタブ）が先に進めていたら、上書きせずにそちらを採る
   function save() {
-    if (!state) { lsDel(K_STATE); return true; }
-    var cur = lsGet(K_STATE);
+    if (!kase) return false;
+    if (!state) { lsDel(stateKey(kase.id)); return true; }
+    var cur = lsGet(stateKey(kase.id));
     if (cur && cur.seed === state.seed && (cur.rev || 0) > (state.rev || 0)) { state = cur; render(); return false; }
     state.rev = (state.rev || 0) + 1;
-    lsSet(K_STATE, state);
+    lsSet(stateKey(kase.id), state);
     return true;
   }
   function reloadState() {
-    var cur = lsGet(K_STATE);
+    if (!kase) return false;
+    var cur = lsGet(stateKey(kase.id));
     if (!cur) return false;
     if (!state || cur.seed !== state.seed || (cur.rev || 0) > (state.rev || 0)) { state = cur; return true; }
     return false;
@@ -66,6 +94,7 @@
   }
   function defaultDetail(name) { return name + 'の まわりを、手で さわって さがしてみるのじゃ。シールや 紙が あるはずじゃ。'; }
   function vars() {
+    if (!setup) return { name: '' };
     var P = puz();
     var p1 = setup.places[0], p2 = setup.places[1];
     var v = {
@@ -335,25 +364,57 @@
   }
 
   // ---------- タイトル ----------
+  // タイトル＝事件ファイル（事件の一覧）
+  function R(s) { return NL.rubyHtml(s); }
+  function chapterOf(c, st) {
+    var sc = STORIES[c.story]; if (!sc || !st) return '';
+    for (var i = 0; i < sc.chapters.length; i++) {
+      for (var j = 0; j < sc.chapters[i].steps.length; j++) {
+        if (sc.chapters[i].steps[j].id === st.stepId) return NL.plainText(sc.chapters[i].title).split('　')[0];
+      }
+    }
+    return '';
+  }
+  function starsOf(st) {
+    var n = 0; Object.keys((st && st.hints) || {}).forEach(function (k) { n += st.hints[k]; });
+    return n <= 2 ? 3 : n <= 5 ? 2 : 1;
+  }
   function renderTitle() {
-    var done = state && state.stepId === 'done';
     var h = '<div class="title-scr">' + EMBLEM +
       '<div class="logo-sub">TOP SECRET MISSION</div>' +
-      '<div class="logo">' + NL.rubyHtml(SC.title) + '</div>' +
-      '<div class="logo2">' + NL.rubyHtml(SC.subtitle) + '</div>' +
-      '<div class="syslog">' + ['&gt; D-PHONE SYSTEM BOOT ...', '&gt; RADAR ....... OK', '&gt; NFC SCANNER .. ' + (hasNdef() ? 'OK' : 'TAG-LINK'), '&gt; VOICE ....... OK', '&gt; MISSION DATA .. 1 件 受信'].map(function (l, i) {
+      '<div class="logo" style="font-size:30px">' + R('[探偵|たんてい]ケータイ') + '<br>D-PHONE</div>' +
+      '<div class="syslog">' + ['&gt; D-PHONE SYSTEM BOOT ...', '&gt; RADAR ....... OK', '&gt; NFC SCANNER .. ' + (hasNdef() ? 'OK' : 'TAG-LINK'), '&gt; CASE FILE .... ' + CASES.length + ' 件'].map(function (l, i) {
         return '<div style="animation-delay:' + (0.3 + i * 0.35) + 's">' + l + '</div>';
-      }).join('') + '</div>';
-    if (!setup.ready) h += '<div class="warn">おうちの人へ：まだ 準備が できていません。下の「おうちの方へ（準備）」から 隠し場所を 決めてください。</div>';
-    if (done) {
-      h += '<button class="btn gold" data-act="cert">🏅 [探偵|たんてい][認定証|にんていしょう]を 見る</button>'.replace(/\[([^|\]]+)\|([^\]]+)\]/g, '<ruby>$1<rt>$2</rt></ruby>');
-      h += '<button class="btn ghost" data-act="replay">もう一度 はじめから 遊ぶ</button>';
-    } else if (state) {
-      h += '<button class="btn" data-act="continue">▶ つづきから</button>';
-    } else {
-      h += '<button class="btn" data-act="start">▶ [捜査|そうさ] かいし</button>'.replace(/\[([^|\]]+)\|([^\]]+)\]/g, '<ruby>$1<rt>$2</rt></ruby>');
-    }
-    h += '<button class="foot-link" data-act="parent">おうちの方へ（準備）</button></div>';
+      }).join('') + '</div>' +
+      '<h2 style="text-align:left;margin-top:8px">📁 ' + R('[事件|じけん]ファイル') + '</h2>' +
+      '<p class="small" style="text-align:left;margin:0 0 4px">' + R('ときたい [事件|じけん]を えらんでね') + '</p>';
+    if (!CASES.length) h += '<div class="warn">' + R('まだ [事件|じけん]が ありません。おうちの人に 作ってもらおう。') + '</div>';
+    CASES.forEach(function (c, i) {
+      var sc = STORIES[c.story];
+      if (!sc) return;
+      var st = caseState(c);
+      var done = st && st.stepId === 'done';
+      var badge, btns = '';
+      if (!c.setup.ready) {
+        badge = '<span class="cs wait">' + R('じゅんび まち') + '</span>';
+        btns = '<p class="small" style="margin:8px 0 0">' + R('おうちの人に じゅんびを してもらってね') + '</p>';
+      } else if (done) {
+        var k = starsOf(st);
+        badge = '<span class="cs done">' + R('[解決|かいけつ]ずみ') + ' ' + new Array(k + 1).join('★') + '</span>';
+        btns = '<div class="row"><button class="btn gold" data-act="case-cert" data-case="' + c.id + '">🏅 ' + R('[認定証|にんていしょう]') + '</button>' +
+          '<button class="btn ghost" data-act="case-replay" data-case="' + c.id + '">もう一度</button></div>';
+      } else if (st) {
+        badge = '<span class="cs go">' + R('[捜査|そうさ]中') + '：' + esc(chapterOf(c, st) || 'プロローグ') + '</span>';
+        btns = '<button class="btn" data-act="case-cont" data-case="' + c.id + '">▶ つづきから</button>';
+      } else {
+        badge = '<span class="cs new">NEW</span>';
+        btns = '<button class="btn" data-act="case-start" data-case="' + c.id + '">▶ ' + R('この [事件|じけん]に いどむ！') + '</button>';
+      }
+      h += '<div class="casecard' + (done ? ' done' : '') + '"><div class="cno">CASE ' + ('0' + (i + 1)).slice(-2) + ' ' + badge + '</div>' +
+        '<div class="ctt">' + R(sc.title) + '</div><div class="csub">' + esc(caseName(c)) + '</div>' +
+        '<p class="cbl">' + R(sc.blurb || '') + '</p><p class="small" style="margin:0">⏱ ' + (sc.minutes || 30) + R('分ぐらい') + '</p>' + btns + '</div>';
+    });
+    h += '<button class="foot-link" data-act="parent">おうちの方へ（準備・事件を作る）</button></div>';
     $app.innerHTML = frame('', h, { noDock: true });
   }
 
@@ -423,9 +484,19 @@
     }
     h += '</div><p class="next-hint">' + (d.i + 1) + ' / ' + d.lines.length + '　タップで すすむ ▶</p></div>';
     $app.innerHTML = frame(chHtml, h);
-    var last = document.querySelector('.msg:last-child');
-    if (last) last.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    stickBottom();
     if (!d.typed) typeLine();
+  }
+  // いちばん新しい吹き出しが、下の固定ボタンに隠れないところまで画面を動かす。
+  // ⚠ 文字が出るたびに吹き出しが伸びるので、打っているあいだも呼ぶ（呼ばないと前の吹き出しで止まって見える）
+  function stickBottom() {
+    var el = document.querySelector('.talk .msg:last-child');
+    if (!el) return;
+    var dock = document.querySelector('.dock');
+    var hint = document.querySelector('.talk-wrap .next-hint');
+    var limit = window.innerHeight - (dock ? dock.offsetHeight : 0) - (hint ? hint.offsetHeight + 12 : 40);
+    var r = el.getBoundingClientRect();
+    if (r.bottom > limit) window.scrollBy(0, Math.ceil(r.bottom - limit));
   }
   function typeLine() {
     var d = V.dlg, l = d.lines[d.i];
@@ -437,7 +508,7 @@
     var iv = every(function () {
       n += 1;
       el.textContent = full.slice(0, n);
-      if (n % 3 === 0) sfx('tick');
+      if (n % 3 === 0) { sfx('tick'); stickBottom(); }
       if (n >= full.length) { clearInterval(iv); finishLine(); }
     }, l.who === 'kaitou' ? 55 : 38);
   }
@@ -447,6 +518,7 @@
     var el = document.getElementById('typing');
     if (el) { el.classList.remove('caret'); el.innerHTML = T(d.lines[d.i].text); }
     var m = el && el.closest('.msg'); if (m) m.classList.remove('typing');
+    stickBottom();
   }
   function dlgNext() {
     var d = V.dlg; if (!d) return;
@@ -847,7 +919,7 @@
       '<div class="seal">' + T('[認定|にんてい]') + '<br>D-PHONE</div></div>' +
       '<div class="noprint"><button class="btn gold" data-act="print-cert">🖨 ' + T('[印刷|いんさつ]・PDFに する') + '</button>' +
       '<button class="btn ghost" data-act="evlist">🎒 ' + T('あつめた [証拠|しょうこ]を 見る') + '</button>' +
-      '<button class="btn ghost" data-act="title">タイトルへ</button></div>';
+      '<button class="btn ghost" data-act="title">📁 ' + R('[事件|じけん]ファイルへ もどる') + '</button></div>';
     $app.innerHTML = frame('', h, { noDock: true });
   }
 
@@ -901,7 +973,7 @@
     var h = '<div class="overlay" data-act="close-layer"><div class="sheet" data-stop="1"><button class="x" data-act="close-layer">とじる</button><h2>⚙ メニュー</h2>' +
       '<button class="btn" data-act="tog-sound">' + (pref.sound ? '🔊 こうかおん：オン' : '🔈 こうかおん：オフ') + '</button>' +
       '<button class="btn" data-act="tog-speak">' + (pref.autoSpeak ? '🗣 ' + T('お話を 自動で 読む：オン') : '🗣 ' + T('お話を 自動で 読む：オフ')) + '</button>' +
-      '<button class="btn ghost" data-act="title">タイトルへ</button>' +
+      '<button class="btn ghost" data-act="title">📁 ' + R('[事件|じけん]ファイルへ もどる') + '</button>' +
       '<button class="btn ghost" data-act="parent">おうちの方へ（準備）</button></div></div>';
     $layer.innerHTML = h;
   }
@@ -918,9 +990,9 @@
   }
 
   // ---------- おうちの方の画面 ----------
-  function parentOk() { return !setup.pin || ssGet(K_PARENT) === '1'; }
+  function parentOk() { return !PIN || ssGet(K_PARENT) === '1'; }
   function renderParent() {
-    if (!setup.pin) { renderPinSet(); return; }
+    if (!PIN) { renderPinSet(); return; }
     if (!parentOk()) {
       $app.innerHTML = frame('', '<div class="parent"><h2>おうちの方へ</h2><p>準備画面の合言葉（4けた）を入れてください。</p>' +
         '<input type="password" inputmode="numeric" maxlength="8" id="pin" class="inp" autocomplete="off">' +
@@ -928,19 +1000,26 @@
         '<p class="small">合言葉を忘れたときは、この端末の Safari / Chrome の「サイトのデータ」を消すと最初からになります。</p></div>', { noDock: true });
       return;
     }
+    if (!kase) {
+      $app.innerHTML = frame('', '<div class="parent"><h2>おうちの方へ（準備）</h2>' + caseFileHtml() + '<button class="btn" data-act="title">おわる（事件ファイルへ）</button></div>', { noDock: true });
+      return;
+    }
     if (!V.draft) V.draft = JSON.parse(JSON.stringify(setup));
     var d = V.draft;
-    var h = '<div class="parent"><h2>おうちの方へ（準備）</h2>';
+    var roles = SC.placeRoles || [];
+    var h = '<div class="parent"><h2>おうちの方へ（準備）</h2>' + caseFileHtml();
+    h += '<h2 style="margin-top:18px">CASE ' + ('0' + (CASES.indexOf(kase) + 1)).slice(-2) + '「' + esc(caseName(kase)) + '」の準備</h2>';
     h += '<div class="panel"><h3>遊び方の流れ</h3><ol>' +
       '<li>下で <b>隠し場所を2つ</b> 決めて「保存」。暗号は場所に合わせて自動で作り直されます。</li>' +
       '<li><b>NFCタグにURLを書き込み</b>、場所1・場所2に貼る（タグが無ければ印刷した紙だけでも遊べます）。</li>' +
       '<li>「印刷する紙」を印刷して、タグのそばに隠す（捜査コードと、謎の紙・怪盗のメモが載っています）。</li>' +
       '<li>子どもに端末を渡して「捜査かいし」。困ったら💡ヒント（3段階、3つ目は答え）。</li></ol></div>';
 
-    h += '<div class="panel"><h3>① 隠し場所</h3>';
+    h += '<div class="panel"><h3>① 事件の名前と隠し場所</h3>' +
+      '<label>事件の名前（事件ファイルに出ます。空なら「' + esc(NL.plainText(SC.subtitle)) + '」）</label><input type="text" data-pf="title" data-i="0" value="' + esc(d.title || '') + '" placeholder="' + esc(NL.plainText(SC.subtitle)) + '">';
     [0, 1].forEach(function (i) {
       var p = d.places[i];
-      h += '<h3 style="color:var(--cyan);margin-top:12px">場所' + (i + 1) + (i === 0 ? '（第2章・本だな の役）' : '（第3章・金庫の手がかり）') + '</h3>' +
+      h += '<h3 style="color:var(--cyan);margin-top:12px">場所' + (i + 1) + (roles[i] ? '（' + esc(roles[i]) + '）' : '') + '</h3>' +
         '<label>よくある場所から選ぶ</label><select data-pf="preset" data-i="' + i + '"><option value="">（自分で入れる）</option>' +
         PRESETS.map(function (q, k) { return '<option value="' + k + '"' + (q.name === p.name && q.yomi === p.yomi ? ' selected' : '') + '>' + esc(q.name) + '（' + esc(q.yomi) + '）</option>'; }).join('') + '</select>' +
         '<label>子どもに見せる名前（小3までの漢字か、ひらがなで。例：本だな）</label><input type="text" data-pf="name" data-i="' + i + '" value="' + esc(p.name) + '">' +
@@ -987,7 +1066,7 @@
       '<tr><td>暗号その2</td><td>' + esc(v.a2) + '（' + esc(v.place2) + '）</td></tr>' +
       '<tr><td>金庫</td><td>' + esc(v.code) + '（' + v.d1 + '・' + v.d2 + '・' + v.key + '×2）</td></tr></table></div>';
 
-    var share = baseUrl() + '#setup=' + b64(JSON.stringify(setup));
+    var share = baseUrl() + '#setup=' + b64(JSON.stringify({ story: kase.story, setup: setup }));
     h += '<div class="panel"><h3>⑥ ほかの端末へ準備を写す</h3><p class="small">準備をしたのが子どもの端末でないときは、このURLを子どもの端末で開いてください（LINE で送るなら、受け取ったあと Safari / Chrome で開く）。</p>' +
       '<div class="mono">' + esc(share) + '</div><button class="btn sm" data-copy="' + esc(share) + '">コピー</button></div>';
 
@@ -999,12 +1078,33 @@
           return '<option value="' + s.st.id + '"' + (s.st.id === state.stepId ? ' selected' : '') + '>' + esc(Plain(s.ch.title)) + ' / ' + esc(s.st.id) + '</option>';
         }).join('') + '</select><button class="btn sm" data-act="jump">ここへ移る</button>';
     } else h += '<p class="small">まだ遊んでいません。</p>';
-    h += '<button class="btn red" data-act="reset">最初からやり直す（記録を消す）</button>' +
-      '<button class="btn red" data-act="newcase">新しい事件にする（捜査コードが変わる → タグを書き直し）</button></div>';
+    h += '<button class="btn red" data-act="reset">この事件を最初からやり直す（記録を消す）</button>' +
+      '<button class="btn red" data-act="newcase">捜査コードを作り直す（タグの書き直し・紙の印刷し直しが必要）</button>' +
+      '<button class="btn red" data-act="case-del">この事件を事件ファイルから消す</button></div>';
 
     h += '<div class="panel"><h3>⑧ 合言葉</h3><button class="btn sm" data-act="pin-change">準備画面の合言葉を変える</button></div>';
-    h += '<button class="btn" data-act="title">おわる（タイトルへ）</button></div>';
+    h += '<button class="btn" data-act="title">おわる（事件ファイルへ）</button></div>';
     $app.innerHTML = frame('', h, { noDock: true });
+  }
+  // 事件ファイル（準備画面のいちばん上）：どの事件を準備するか選ぶ・新しく作る
+  function caseFileHtml() {
+    var h = '<div class="panel"><h3>📁 事件ファイル</h3><p class="small">事件ごとに、隠し場所・捜査コード・進み具合が別々に残ります。子どもはタイトルの一覧から選んで遊びます。</p><table>';
+    CASES.forEach(function (c, i) {
+      var st = caseState(c);
+      var stat = !c.setup.ready ? '準備まだ' : !st ? '未着手' : st.stepId === 'done' ? '解決ずみ' : '捜査中';
+      var on = kase && c.id === kase.id;
+      h += '<tr' + (on ? ' style="background:rgba(63,240,255,.08)"' : '') + '><td>CASE ' + ('0' + (i + 1)).slice(-2) + '</td><td>' + esc(caseName(c)) +
+        '<br><span class="small">' + esc(NL.plainText((STORIES[c.story] || {}).title || c.story)) + '・' + stat + '</span></td><td>' +
+        (on ? '<span class="ok">準備中</span>' : '<button class="btn sm" data-act="pcase" data-case="' + c.id + '">準備する</button>') + '</td></tr>';
+    });
+    h += '</table><details style="margin-top:10px"><summary>＋ 新しい事件を作る</summary>' +
+      '<label>物語</label><select id="nstory">' + REG.filter(function (r) { return STORIES[r.id]; }).map(function (r) {
+        return '<option value="' + esc(r.id) + '">' + esc(NL.plainText(STORIES[r.id].title)) + '（' + esc(NL.plainText(STORIES[r.id].subtitle)) + '）</option>';
+      }).join('') + '</select>' +
+      '<label>事件の名前（例：消えたダイヤ『ブルームーン』2）</label><input type="text" id="ntitle">' +
+      '<p class="small">同じ物語でも、隠し場所と捜査コードが新しくなります（前の事件のタグや紙はそのまま前の事件のもの）。</p>' +
+      '<button class="btn sm" data-act="case-new">作って準備する</button></details></div>';
+    return h;
   }
   // 準備の点検と、できる暗号の下見（打ち終えるたびにここだけ書き換える）
   function checkHtml(d) {
@@ -1054,13 +1154,13 @@
 
   // ---------- 印刷 ----------
   function renderPrint() {
-    if (!parentOk()) { route = 'parent'; renderParent(); return; }
+    if (!parentOk() || !kase) { route = 'parent'; renderParent(); return; }
     var v = vars();
     var m = setup.modes;
     var h = '<div class="noprint"><button class="btn gold" data-act="do-print">🖨 印刷する</button><button class="btn ghost" data-act="parent">もどる</button>' +
       '<p class="small">紙は A4 で3枚です。1枚目を場所1、2枚目を場所2 のタグのそばに隠し、3枚目の予告状は最初に子どもへ手わたします。</p></div>';
     [0, 1].forEach(function (i) {
-      h += '<div class="print-page"><div class="ts">TOP SECRET</div><div class="pl">' + T('[現場|げんば]' + (i ? 'B' : 'A') + '：') + esc(setup.places[i].name) + '</div>';
+      h += '<div class="print-page"><div class="ts">TOP SECRET</div><div style="margin-top:8px;color:#555">' + esc(caseName(kase)) + '</div><div class="pl">' + T('[現場|げんば]' + (i ? 'B' : 'A') + '：') + esc(setup.places[i].name) + '</div>';
       if (m.code) h += '<div>' + T('[捜査|そうさ]コード') + '</div><div class="code">' + NL.sceneCode(setup.seed, i) + '</div>';
       h += '<div style="max-width:420px">' + (i === 0 ? paperHtml(400) : memoHtml(420)) + '</div>';
       h += '<div class="parent-note">おうちの方へ：このカードを「' + esc(setup.places[i].name) + '」に隠し、そばにタグ（場所' + (i + 1) + 'のURL）を貼ってください。' +
@@ -1100,16 +1200,21 @@
   }
   function act_(act, el) {
     switch (act) {
-      case 'title': closeLayer(); V = {}; route = 'title'; render(); break;
-      case 'start': V = {}; route = 'name'; render(); break;
-      case 'continue': audio(); route = 'play'; V = {}; render(); break;
-      case 'replay':
-        if (confirm('はじめから 遊びますか？（いまの にんていしょうは 消えます）')) { V = {}; route = 'name'; V.name = state.name; state = null; lsDel(K_STATE); render(); }
+      case 'title': closeLayer(); V = {}; route = 'title'; if (location.hash) history.replaceState(null, '', location.pathname); render(); window.scrollTo(0, 0); break;
+      case 'case-start': selectCase(el.getAttribute('data-case')); V = { name: pref.lastName || '' }; route = 'name'; render(); break;
+      case 'case-cont': audio(); selectCase(el.getAttribute('data-case')); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
+      case 'case-cert': selectCase(el.getAttribute('data-case')); route = 'cert'; render(); window.scrollTo(0, 0); break;
+      case 'case-replay':
+        selectCase(el.getAttribute('data-case'));
+        if (confirm('はじめから 遊びますか？（この 事件の にんていしょうは 消えます）')) {
+          V = { name: (state && state.name) || pref.lastName || '' }; route = 'name'; state = null; lsDel(stateKey(kase.id)); render();
+        }
         break;
       case 'name-ok': {
         var nm = (document.getElementById('nm').value || '').trim();
         if (!nm) { toast('名前を 入れてね'); return; }
-        audio(); newGame(nm.slice(0, 12)); route = 'play'; V = {}; render(); break;
+        pref.lastName = nm.slice(0, 12); lsSet(K_PREF, pref);
+        audio(); newGame(nm.slice(0, 12)); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
       }
       case 'titlecard-ok': state.titles[cur().ch.id] = true; save(); render(); break;
       case 'dlg-next': dlgNext(); break;
@@ -1123,7 +1228,6 @@
       case 'safe-open': openSafe(); break;
       case 'get-close': { closeLayer(); var f = V.afterGet; V.afterGet = null; if (f) f(); break; }
       case 'to-cert': closeLayer(); route = 'cert'; render(); break;
-      case 'cert': route = 'cert'; render(); break;
       case 'print-cert': window.print(); break;
       case 'evlist': showInventory(); break;
       case 'inv': showInventory(); break;
@@ -1136,20 +1240,20 @@
       case 'tog-sound': pref.sound = !pref.sound; lsSet(K_PREF, pref); showMenu(); break;
       case 'tog-speak': pref.autoSpeak = !pref.autoSpeak; lsSet(K_PREF, pref); showMenu(); break;
       case 'parent': closeLayer(); route = 'parent'; V = {}; history.replaceState(null, '', '#parent'); render(); break;
-      case 'tag-close': tagView = null; route = state ? 'play' : 'title'; V = {}; render(); break;
+      case 'tag-close': tagView = null; route = state && state.stepId !== 'done' ? 'play' : 'title'; V = {}; render(); break;
       case 'pin-set': {
         var p = (document.getElementById('pin').value || '').trim();
         if (!/^\d{4,8}$/.test(p)) { toast('数字4けたで 入れてください'); return; }
-        setup.pin = p; saveSetup(); ssSet(K_PARENT, '1'); render(); break;
+        PIN = p; lsSet(K_PIN, PIN); ssSet(K_PARENT, '1'); render(); break;
       }
       case 'pin-in': {
         var q = (document.getElementById('pin').value || '').trim();
-        if (q === setup.pin) { ssSet(K_PARENT, '1'); render(); } else { sfx('ng'); toast('合言葉が ちがいます'); }
+        if (q === PIN) { ssSet(K_PARENT, '1'); render(); } else { sfx('ng'); toast('合言葉が ちがいます'); }
         break;
       }
       case 'pin-change': {
         var np = prompt('新しい合言葉（数字4〜8けた）');
-        if (np && /^\d{4,8}$/.test(np)) { setup.pin = np; saveSetup(); if (V.draft) V.draft.pin = np; toast('変えました'); }
+        if (np && /^\d{4,8}$/.test(np)) { PIN = np; lsSet(K_PIN, PIN); toast('変えました'); }
         break;
       }
       case 'key-dice': V.draft.keyNo = 10 + Math.floor(Math.random() * 40); render(); break;
@@ -1178,13 +1282,29 @@
         save(); toast('移りました'); render(); break;
       }
       case 'reset':
-        if (confirm('記録を消して、最初からにしますか？')) { state = null; lsDel(K_STATE); toast('消しました'); render(); }
+        if (confirm('「' + caseName(kase) + '」の記録を消して、最初からにしますか？')) { state = null; lsDel(stateKey(kase.id)); toast('消しました'); render(); }
         break;
       case 'newcase':
-        if (confirm('新しい事件にしますか？ 捜査コードとタグのURLが変わるので、タグを書き直して紙も印刷し直す必要があります。記録も消えます。')) {
-          setup.seed = newSeed(); saveSetup(); V.draft = null; state = null; lsDel(K_STATE); toast('新しい事件にしました'); render();
+        if (confirm('捜査コードを作り直しますか？ タグのURLが変わるので、タグを書き直して紙も印刷し直す必要があります。この事件の記録も消えます。')) {
+          setup.seed = newSeed(); saveSetup(); V.draft = null; state = null; lsDel(stateKey(kase.id)); toast('作り直しました'); render();
         }
         break;
+      case 'pcase': selectCase(el.getAttribute('data-case')); V = {}; render(); window.scrollTo(0, 0); break;
+      case 'case-new': {
+        var story = document.getElementById('nstory').value;
+        if (!STORIES[story]) return;
+        var su = defaultSetup(story);
+        su.title = (document.getElementById('ntitle').value || '').trim();
+        var nc = addCase(story, su);
+        selectCase(nc.id); V = {}; toast('作りました。隠し場所を決めて「保存」してください', 3500); render(); window.scrollTo(0, 0); break;
+      }
+      case 'case-del': {
+        if (!confirm('「' + caseName(kase) + '」を事件ファイルから消しますか？ 記録と認定証も消えます。この事件のタグは使えなくなります。')) return;
+        var gone = kase.id;
+        CASES = CASES.filter(function (c) { return c.id !== gone; });
+        saveCases(); lsDel(stateKey(gone));
+        selectCase(CASES[0] && CASES[0].id); V = {}; toast('消しました'); render(); window.scrollTo(0, 0); break;
+      }
       default: break;
     }
   }
@@ -1195,7 +1315,10 @@
     if (route !== 'parent' || !V.draft) return;
     var t = e.target;
     var f = t.getAttribute('data-pf'), i = +t.getAttribute('data-i');
-    if (f === 'name' || f === 'yomi' || f === 'detail') {
+    if (f === 'title') {
+      V.draft.title = t.value.trim();
+      paintCheck();
+    } else if (f === 'name' || f === 'yomi' || f === 'detail') {
       V.draft.places[i][f] = f === 'yomi' ? NL.normKana(t.value) : t.value.trim();
       paintCheck();
     } else if (f === 'keyNo') {
@@ -1225,38 +1348,75 @@
   $app.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     if (e.target.id === 'nm') act_('name-ok');
-    if (e.target.id === 'pin') act_(setup.pin ? 'pin-in' : 'pin-set');
+    if (e.target.id === 'pin') act_(PIN ? 'pin-in' : 'pin-set');
   });
 
   // 別のページ（タグで開いた Safari のタブ）が進めたら、こちらも合わせる
   window.addEventListener('storage', function (e) {
-    if (e.key === K_STATE && reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
+    if (kase && e.key === stateKey(kase.id) && reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible' && reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
   });
 
   // ---------- はじめ ----------
+  // v1（事件が1つだけの版）で準備した隠し場所・捜査コード・進み具合を、事件1「ブルームーン」としてそのまま写す。
+  // ⚠ seed をそのまま使うので捜査コードもタグのURLも変わらない（書いたタグはそのまま使える）
+  function migrateV1() {
+    var v1 = lsGet(K_V1_SETUP);
+    if (!v1 || !v1.places || !v1.seed) return false;
+    if (v1.pin) { PIN = String(v1.pin); lsSet(K_PIN, PIN); }
+    var su = JSON.parse(JSON.stringify(v1));
+    delete su.pin;
+    su.title = su.title || '';
+    su.modes = su.modes || { tag: true, code: true, tap: false };
+    var c = { id: 'c' + (Number(v1.seed) >>> 0).toString(36), story: 'bluemoon', setup: su, createdAt: Date.now() };
+    CASES = [c];
+    var st1 = lsGet(K_V1_STATE);
+    if (st1 && st1.seed === v1.seed) { lsSet(stateKey(c.id), st1); if (st1.name && !pref.lastName) { pref.lastName = st1.name; lsSet(K_PREF, pref); } }
+    lsSet(K_CUR, c.id);
+    saveCases();
+    return true;
+  }
+  // タグの捜査コードから、どの事件のタグかを決める（いま選んでいる事件を先に見る）
+  function caseForTag(tok) {
+    var d = NL.decodeTag(tok);
+    if (!d) return null;
+    var order = CASES.slice();
+    if (kase) order.sort(function (a, b) { return (a.id === kase.id ? 0 : 1) - (b.id === kase.id ? 0 : 1); });
+    for (var i = 0; i < order.length; i++) if (NL.sceneCode(order[i].setup.seed, d.idx) === d.code) return order[i];
+    return null;
+  }
   function boot() {
-    setup = lsGet(K_SETUP);
-    if (!setup || !setup.places || setup.places.length < 2) { setup = defaultSetup(); saveSetup(); }
-    setup.modes = setup.modes || { tag: true, code: true, tap: false };
-    state = lsGet(K_STATE);
-    if (state && state.seed !== setup.seed) state = null;
     var p = lsGet(K_PREF); if (p) pref = Object.assign(pref, p);
+    PIN = lsGet(K_PIN) || '';
+    CASES = lsGet(K_CASES);
+    if (!Array.isArray(CASES)) {
+      CASES = [];
+      if (!migrateV1()) addCase('bluemoon');
+    }
+    CASES = CASES.filter(function (c) { return c && c.setup && STORIES[c.story]; });
+    CASES.forEach(function (c) { c.setup.modes = c.setup.modes || { tag: true, code: true, tap: false }; });
+    selectCase(lsGet(K_CUR));
 
     var url = new URL(location.href);
     var hash = location.hash || '';
-    // 準備を写すURL
+    // 準備を写すURL（{story, setup}。v1 の形＝setup だけ も受ける）
     var m = hash.match(/#setup=([A-Za-z0-9_-]+)/);
     if (m) {
       try {
-        var s = JSON.parse(unb64(m[1]));
-        if (s && s.places && s.seed) {
-          var same = JSON.stringify(s) === JSON.stringify(setup);
-          if (!same && confirm('この端末に、事件の準備（隠し場所・捜査コード）を写しますか？' + (state && state.seed !== s.seed ? '\n（いまの記録は消えます）' : ''))) {
-            setup = s; setup.ready = true; saveSetup();
-            if (state && state.seed !== s.seed) { state = null; lsDel(K_STATE); }
+        var o = JSON.parse(unb64(m[1]));
+        var story = o.story || 'bluemoon', su = o.setup || o;
+        if (su && su.places && su.seed && STORIES[story]) {
+          delete su.pin;
+          var same = null;
+          CASES.forEach(function (c) { if (c.setup.seed === su.seed) same = c; });
+          var name = su.title || NL.plainText(STORIES[story].subtitle);
+          if (same && JSON.stringify(same.setup) === JSON.stringify(su)) selectCase(same.id);
+          else if (confirm('この端末の事件ファイルに「' + name + '」の準備（隠し場所・捜査コード）を' + (same ? '写して上書き' : '足') + 'しますか？')) {
+            su.ready = true;
+            if (same) { same.setup = su; saveCases(); selectCase(same.id); }
+            else selectCase(addCase(story, su).id);
           }
         }
       } catch (e) { alert('準備のURLが読めませんでした'); }
@@ -1266,6 +1426,8 @@
     var t = url.searchParams.get('t');
     if (t) {
       history.replaceState(null, '', location.pathname);
+      var hit = caseForTag(t);
+      if (hit) selectCase(hit.id);
       onTag(t, false);
       return;
     }
@@ -1274,14 +1436,15 @@
     render();
   }
 
-  Promise.all([
-    fetch('scenario.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }),
-    fetch('presets.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).catch(function () { return []; })
-  ]).then(function (a) {
-    SC = a[0]; PRESETS = a[1];
-    flatten();
-    boot();
-  }).catch(function (e) {
+  // 物語の一覧（stories.json）→ それぞれの物語 → 準備画面の「よくある場所」
+  fetch('stories.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (reg) {
+    REG = reg;
+    return Promise.all(reg.map(function (x) {
+      return fetch(x.file, { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) { STORIES[x.id] = j; });
+    }).concat([
+      fetch('presets.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) { PRESETS = j; }).catch(function () { PRESETS = []; })
+    ]));
+  }).then(boot).catch(function (e) {
     $app.innerHTML = '<div class="boot">データが 読めませんでした。電波の よい ところで もう一度 ひらいてね。<br><small>' + esc(e && e.message) + '</small></div>';
   });
 

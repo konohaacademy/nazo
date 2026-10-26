@@ -271,7 +271,8 @@ h3 { font-size: 17px; color: var(--gold); }
 .safe.open .door { opacity: 1; animation: door 1.4s .2s cubic-bezier(.3, .1, .3, 1) forwards; }
 .safe.open .dials, .safe.open .lbl { visibility: hidden; }
 @keyframes door { to { transform: rotateY(-105deg); } }
-.safe .gem { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; }
+/* ⚠ 透明でもダイヤルの上に重なるので、指を通す（無いと ▲▼ が押せない） */
+.safe .gem { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; }
 .safe.open .gem { animation: gem 1s 1s both; }
 @keyframes gem { from { opacity: 0; transform: scale(.4) rotate(-20deg); } to { opacity: 1; transform: none; } }
 
@@ -345,7 +346,7 @@ h3 { font-size: 17px; color: var(--gold); }
 .parent li { margin: 4px 0; }
 .parent table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .parent td, .parent th { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: left; vertical-align: top; }
-.toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 48px); transform: translateX(-50%); z-index: 90; background: #04202b; border: 1px solid var(--cyan); color: var(--cyan); padding: 8px 16px; border-radius: 12px; font-family: var(--dot); animation: rise .3s both; max-width: 90vw; }
+.toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 48px); transform: translateX(-50%); z-index: 90; background: #04202b; border: 1px solid var(--cyan); color: var(--cyan); padding: 8px 16px; border-radius: 12px; font-family: var(--dot); animation: rise .3s both; max-width: 90vw; pointer-events: none; }
 
 /* ---------- 印刷 ---------- */
 .print-page { background: #fff; color: #111; padding: 18px; margin: 12px auto; max-width: 720px; border-radius: 6px; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; }
@@ -368,3 +369,21 @@ h3 { font-size: 17px; color: var(--gold); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01s !important; animation-iteration-count: 1 !important; }
 }
+
+/* ---------- 事件ファイル ---------- */
+.casecard {
+  text-align: left; margin: 12px 0; padding: 14px; border-radius: 16px; border: 1px solid var(--cyan2);
+  background: linear-gradient(160deg, rgba(63, 240, 255, .10), rgba(8, 18, 31, .9) 55%);
+  box-shadow: 0 0 16px rgba(63, 240, 255, .12); animation: rise .4s both;
+}
+.casecard.done { border-color: #8a6a1a; background: linear-gradient(160deg, rgba(255, 207, 74, .12), rgba(8, 18, 31, .9) 55%); }
+.casecard .cno { font-family: var(--dot); font-size: 12px; color: var(--muted); letter-spacing: .15em; display: flex; align-items: center; gap: 8px; }
+.casecard .ctt { font-family: var(--dot); font-size: 22px; color: #fff; margin-top: 6px; line-height: 1.5; }
+.casecard .csub { font-family: var(--dot); color: var(--gold); font-size: 16px; }
+.casecard .cbl { font-size: 15px; margin: 6px 0 2px; color: var(--text); }
+.casecard .row .btn { font-size: 16px; }
+.cs { letter-spacing: 0; font-size: 12px; padding: 1px 8px; border-radius: 8px; }
+.cs.new { background: var(--red); color: #fff; }
+.cs.go { background: #04303d; color: var(--cyan); border: 1px solid var(--cyan2); }
+.cs.done { background: #3a2a06; color: var(--gold); border: 1px solid #8a6a1a; }
+.cs.wait { background: #222; color: var(--muted); border: 1px solid var(--line); }
