@@ -17,6 +17,7 @@
   // ⚠ v1（事件が1つだけだった版）の置き場。最初に開いたとき事件1へ写す（消さない）
   var K_V1_SETUP = 'nazo.v1.setup', K_V1_STATE = 'nazo.v1.state';
   var K_AGENTS = 'nazo.v2.agents', K_ME = 'nazo.v2.me';
+  var K_SEEN = 'nazo.v2.seenStories';   // 事件ファイルに 一度 出した 物語
   // 進み具合は 事件×探偵 ごと。ログインしていなければ置き場が無い（null）
   function stateKey(cid, aid) { aid = aid || (ME && ME.id); return aid ? 'nazo.v2.state.' + cid + '.' + aid : null; }
   // ⚠ 探偵を作る前（2026-10-26 まで）の置き場。最初に開いたとき、記録の名前の探偵へ写す（消さない）
@@ -1886,6 +1887,15 @@
       if (!migrateV1()) addCase('bluemoon');
     }
     CASES = CASES.filter(function (c) { return c && c.setup && STORIES[c.story]; });
+    // 新しく足された物語は、事件ファイルに「じゅんび まち」で1つ出す（親が消したら もう出さない）
+    var seen = lsGet(K_SEEN);
+    if (!Array.isArray(seen)) seen = CASES.map(function (c) { return c.story; });
+    REG.forEach(function (r) {
+      if (!STORIES[r.id] || seen.indexOf(r.id) >= 0) return;
+      if (!CASES.some(function (c) { return c.story === r.id; })) addCase(r.id);
+      seen.push(r.id);
+    });
+    lsSet(K_SEEN, seen);
     CASES.forEach(function (c) { c.setup.modes = c.setup.modes || { tag: true, code: true, tap: false }; });
     AGENTS = lsGet(K_AGENTS);
     if (!Array.isArray(AGENTS)) migrateAgents();
