@@ -150,6 +150,132 @@
     return { ok: true, dial: dial, seq: seq, answer: ks.join('') };
   }
 
+  // ---------- 暗号カード（隠し場所の読みから作る。絵は cards.js が描く） ----------
+  // ⚠ どの種類も答えは読みそのもの。作れない読みは ok:false と理由を返し、準備画面で選べなくする。
+  var CARD_KINDS = ['mirror', 'tanuki', 'gojuon', 'arrow'];
+  var DAKU_OF = { 'が': 'か', 'ぎ': 'き', 'ぐ': 'く', 'げ': 'け', 'ご': 'こ', 'ざ': 'さ', 'じ': 'し', 'ず': 'す', 'ぜ': 'せ', 'ぞ': 'そ', 'だ': 'た', 'ぢ': 'ち', 'づ': 'つ', 'で': 'て', 'ど': 'と', 'ば': 'は', 'び': 'ひ', 'ぶ': 'ふ', 'べ': 'へ', 'ぼ': 'ほ' };
+  var HAN_OF = { 'ぱ': 'は', 'ぴ': 'ひ', 'ぷ': 'ふ', 'ぺ': 'へ', 'ぽ': 'ほ' };
+  // あいうえお表（列＝あ行〜ん。行＝上から1〜5。空きは ''）
+  var GOJUON = [
+    'あいうえお', 'かきくけこ', 'さしすせそ', 'たちつてと', 'なにぬねの', 'はひふへほ', 'まみむめも',
+    'や ゆ よ', 'らりるれろ', 'わ   を', 'ん    '
+  ];
+  // 字を あいうえお表の場所と しるし（゛゜小）に分ける
+  function gojuonPos(k) {
+    var mark = '', base = k;
+    if (DAKU_OF[k]) { base = DAKU_OF[k]; mark = 'daku'; }
+    else if (HAN_OF[k]) { base = HAN_OF[k]; mark = 'han'; }
+    else if (SMALL[k]) { base = SMALL[k]; mark = 'small'; }
+    for (var c = 0; c < GOJUON.length; c++) {
+      var r = GOJUON[c].indexOf(base);
+      if (r >= 0 && base !== ' ') return { col: c, row: r, mark: mark, kana: k };
+    }
+    return null;
+  }
+  // たぬき（「た」ぬき）・ことり（「こ」とり）：読みに よけいな字を まぜ、絵が「どの字を とるか」を教える
+  var TANUKI = [{ ch: 'た', pic: 'tanuki', name: 'たぬき' }, { ch: 'こ', pic: 'kotori', name: 'ことり' }];
+  function cardPuzzle(kind, yomi, seed) {
+    var ks = kanaList(yomi);
+    if (!ks.length) return { ok: false, reason: '読みが空です' };
+    var answer = ks.join('');
+    var r = rng(((Number(seed) >>> 0) ^ 0x51ED) + kind.length * 101);
+    if (kind === 'mirror') return { ok: true, kind: kind, answer: answer, text: answer };
+    if (kind === 'tanuki') {
+      var t = null;
+      for (var i = 0; i < TANUKI.length && !t; i++) if (ks.indexOf(TANUKI[i].ch) < 0) t = TANUKI[i];
+      if (!t) return { ok: false, reason: '読みに「た」と「こ」が両方あるので作れません' };
+      // 字と字のあいだ（はじめと終わりもふくむ）に、よけいな字を1こずつ。同じ すきまに 2こ入れない（「たたた」は すぐ ばれる）。
+      // 入れるのは3〜4か所で、はじめか終わりは どちらか1つまで
+      var n = Math.min(ks.length <= 3 ? 3 : 4, ks.length + 1);
+      var inner = [], ends = shuffle([0, ks.length], r);
+      for (var q = 1; q < ks.length; q++) inner.push(q);
+      inner = shuffle(inner, r);
+      var gaps = inner.slice(0, n - 1).concat([ends[0]]);
+      if (gaps.length < n) gaps = gaps.concat(ends.slice(1));
+      gaps = gaps.slice(0, n);
+      var out = [];
+      for (var g = 0; g <= ks.length; g++) {
+        gaps.forEach(function (x) { if (x === g) out.push(t.ch); });
+        if (g < ks.length) out.push(ks[g]);
+      }
+      return { ok: true, kind: kind, answer: answer, ch: t.ch, pic: t.pic, picName: t.name, text: out.join('') };
+    }
+    if (kind === 'gojuon') {
+      var codes = [];
+      for (var j = 0; j < ks.length; j++) {
+        var pos = gojuonPos(ks[j]);
+        if (!pos) return { ok: false, reason: '「' + ks[j] + '」は あいうえお表に ありません' };
+        codes.push(pos);
+      }
+      // 列のしるし（形）は seed で入れかえる（毎回同じ形にしない）
+      var shapes = shuffle(['star', 'circle', 'triangle', 'square', 'diamond', 'heart', 'moon', 'drop', 'cross', 'hexagon', 'clover'], r);
+      return { ok: true, kind: kind, answer: answer, table: GOJUON, shapes: shapes, codes: codes };
+    }
+    if (kind === 'arrow') {
+      // やじるし迷路：スタートから矢印のとおりに進むと読みが出る。ほかの マスは まぎらわしい字と矢印
+      var size = ks.length <= 5 ? 4 : 5;
+      for (var tries = 0; tries < 400; tries++) {
+        var path = [], used = {}, x = Math.floor(r() * size), y = Math.floor(r() * size);
+        path.push([x, y]); used[x + ',' + y] = 1;
+        var okp = true;
+        while (path.length < ks.length) {
+          var dirs = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]], r).filter(function (d) {
+            var nx = x + d[0], ny = y + d[1];
+            return nx >= 0 && ny >= 0 && nx < size && ny < size && !used[nx + ',' + ny];
+          });
+          if (!dirs.length) { okp = false; break; }
+          x += dirs[0][0]; y += dirs[0][1]; path.push([x, y]); used[x + ',' + y] = 1;
+        }
+        if (!okp) continue;
+        var grid = [], pool = shuffle(WORDS.join('').split('').filter(function (c) { return ks.indexOf(c) < 0; }), r);
+        var ARW = { '1,0': 'r', '-1,0': 'l', '0,1': 'd', '0,-1': 'u' };
+        for (var yy = 0; yy < size; yy++) {
+          var row = [];
+          for (var xx = 0; xx < size; xx++) {
+            var dd = shuffle(['r', 'l', 'd', 'u'], r).filter(function (a) {
+              var nx = xx + (a === 'r' ? 1 : a === 'l' ? -1 : 0), ny = yy + (a === 'd' ? 1 : a === 'u' ? -1 : 0);
+              return nx >= 0 && ny >= 0 && nx < size && ny < size;
+            });
+            row.push({ kana: pool.pop() || 'ぬ', dir: dd[0] });
+          }
+          grid.push(row);
+        }
+        path.forEach(function (pt, i) {
+          var c = grid[pt[1]][pt[0]];
+          c.kana = ks[i];
+          c.dir = i < path.length - 1 ? ARW[(path[i + 1][0] - pt[0]) + ',' + (path[i + 1][1] - pt[1])] : 'goal';
+        });
+        grid[path[0][1]][path[0][0]].start = true;
+        return { ok: true, kind: kind, answer: answer, size: size, grid: grid, start: path[0], path: path };
+      }
+      return { ok: false, reason: '迷路が作れませんでした' };
+    }
+    return { ok: false, reason: '知らない種類です' };
+  }
+  // 矢印迷路を、スタートから実際にたどって読む（テストと準備画面の下見で使う）
+  function walkArrow(cp) {
+    var x = cp.start[0], y = cp.start[1], out = '', guard = 0;
+    while (guard++ < 100) {
+      var c = cp.grid[y][x];
+      out += c.kana;
+      if (c.dir === 'goal') return out;
+      x += c.dir === 'r' ? 1 : c.dir === 'l' ? -1 : 0;
+      y += c.dir === 'd' ? 1 : c.dir === 'u' ? -1 : 0;
+    }
+    return null;
+  }
+  // あいうえお表のカードを、しるしから読み戻す
+  function readGojuon(cp) {
+    var BACK = {};
+    Object.keys(DAKU_OF).forEach(function (k) { BACK['daku' + DAKU_OF[k]] = k; });
+    Object.keys(HAN_OF).forEach(function (k) { BACK['han' + HAN_OF[k]] = k; });
+    Object.keys(SMALL).forEach(function (k) { BACK['small' + SMALL[k]] = k; });
+    return cp.codes.map(function (c) {
+      var base = cp.table[c.col].charAt(c.row);
+      return c.mark ? BACK[c.mark + base] : base;
+    }).join('');
+  }
+
   // ---------- 捜査コードとタグの合言葉 ----------
   function sceneCode(seed, idx) {
     var r = rng(((Number(seed) >>> 0) * 31 + (idx + 1) * 7919) >>> 0);
@@ -193,10 +319,23 @@
     });
     if (p[0] && p[1] && looseKana(p[0].yomi) && looseKana(p[0].yomi) === looseKana(p[1].yomi)) errs.push('隠し場所1と2が同じです');
     if (!errs.length) {
-      var lp = letterPuzzle(p[0].yomi, setup.seed);
-      if (!lp.ok) errs.push('隠し場所1の読みの「' + (lp.missing || []).join('・') + '」を使う言葉が手持ちにありません。読みか場所を変えてください');
-      var cp = clockPuzzle(p[1].yomi, setup.seed);
-      if (!cp.ok) errs.push('隠し場所2で時計の暗号が作れません');
+      var cards = setup.cards || {};
+      var k1 = (cards.p1 && cards.p1.kind) || 'letter', k2 = (cards.p2 && cards.p2.kind) || 'clock';
+      [[k1, 0, '暗号その1'], [k2, 1, '暗号その2']].forEach(function (x) {
+        var kind = x[0], y = p[x[1]].yomi, lab = x[2];
+        if (kind === 'letter') {
+          var lp = letterPuzzle(y, setup.seed);
+          if (!lp.ok) errs.push(lab + '（文字ひろい）：読みの「' + (lp.missing || []).join('・') + '」を使う言葉が手持ちにありません。暗号の種類か場所を変えてください');
+        } else if (kind === 'clock') {
+          if (!clockPuzzle(y, setup.seed).ok) errs.push(lab + '：時計の暗号が作れません。暗号の種類を変えてください');
+        } else if (kind === 'image') {
+          var c = cards[x[1] ? 'p2' : 'p1'] || {};
+          if (!c.img) errs.push(lab + '：画像のURLか写真を入れてください');
+        } else {
+          var cp = cardPuzzle(kind, y, (Number(setup.seed) >>> 0) + x[1]);
+          if (!cp.ok) errs.push(lab + '：' + cp.reason + '。暗号の種類を変えてください');
+        }
+      });
     }
     var k = Number(setup.keyNo);
     if (!(k >= 10 && k <= 49)) errs.push('カギの数は 10〜49 にしてください');
@@ -230,7 +369,7 @@
   var api = {
     toHira: toHira, normKana: normKana, looseKana: looseKana, sameAnswer: sameAnswer,
     kanaList: kanaList, isHiraOnly: isHiraOnly, rng: rng, shuffle: shuffle,
-    WORDS: WORDS, letterPuzzle: letterPuzzle, clockPuzzle: clockPuzzle, makeExpr: makeExpr, evalExpr: evalExpr,
+    WORDS: WORDS, letterPuzzle: letterPuzzle, CARD_KINDS: CARD_KINDS, cardPuzzle: cardPuzzle, walkArrow: walkArrow, readGojuon: readGojuon, gojuonPos: gojuonPos, clockPuzzle: clockPuzzle, makeExpr: makeExpr, evalExpr: evalExpr,
     sceneCode: sceneCode, encodeTag: encodeTag, decodeTag: decodeTag, safeCode: safeCode,
     checkSetup: checkSetup, fill: fill, esc: esc, rubyHtml: rubyHtml, speechText: speechText, plainText: plainText
   };

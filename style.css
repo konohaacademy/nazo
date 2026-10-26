@@ -411,3 +411,18 @@ h3 { font-size: 17px; color: var(--gold); }
 .pp button { height: 64px; font-size: 34px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; touch-action: manipulation; padding: 0; }
 .pp button:active { background: var(--cyan2); }
 #passbox .kb-fn { max-width: 300px; margin: 8px auto 4px; }
+
+/* ---------- 暗号カード ---------- */
+.cardwrap { width: 100%; margin: 6px 0 4px; }
+.cardwrap svg.ncard { width: 100%; height: auto; display: block; border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
+.ncard-img { width: 100%; }
+.ncard-img img { width: 100%; height: auto; display: block; border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, .45); background: #f3e6c4; }
+.ncard-img.err { padding: 28px 12px; text-align: center; color: var(--red); border: 1px dashed var(--red); border-radius: 10px; font-size: 14px; }
+.cardpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 6px 0 10px; }
+.cardpick label { display: flex; gap: 6px; align-items: flex-start; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); font-size: 14px; cursor: pointer; }
+.cardpick label.on { border-color: var(--gold); box-shadow: 0 0 8px rgba(255, 207, 74, .35); }
+.cardpick label.off { opacity: .45; cursor: not-allowed; }
+.cardpick .small { display: block; }
+@media print { .cardwrap svg.ncard, .ncard-img img { box-shadow: none; } .print-card { max-width: 100%; margin: 12px auto; } }
+.card .th > .cardwrap { transform: none; flex: 1 1 auto; margin: 0; }
+.card .th > .cardwrap svg.ncard, .card .th > .cardwrap img { box-shadow: none; border-radius: 4px; }

@@ -55,7 +55,7 @@
     return c;
   }
   function saveCases() { lsSet(K_CASES, CASES); }
-  function saveSetup() { if (kase) kase.setup = setup; saveCases(); PZ = null; }
+  function saveSetup() { if (kase) kase.setup = setup; saveCases(); PZ = null; if (SC) flatten(); }
   function caseById(id) { for (var i = 0; i < CASES.length; i++) if (CASES[i].id === id) return CASES[i]; return null; }
   // 遊ぶ事件を切りかえる（setup・state・お話をその事件のものにする）
   function selectCase(id) {
@@ -119,14 +119,45 @@
   // ---------- 暗号（準備が変わるまで使い回す） ----------
   var PZ = null;
   function puz() {
-    if (PZ && PZ.seed === setup.seed && PZ.k === JSON.stringify(setup.places) + setup.keyNo) return PZ;
+    var key = JSON.stringify(setup.places) + setup.keyNo + JSON.stringify(cardKinds());
+    if (PZ && PZ.seed === setup.seed && PZ.k === key) return PZ;
+    var ck = cardKinds();
     PZ = {
-      seed: setup.seed, k: JSON.stringify(setup.places) + setup.keyNo,
+      seed: setup.seed, k: key,
       lp: NL.letterPuzzle(setup.places[0].yomi, setup.seed),
       cp: NL.clockPuzzle(setup.places[1].yomi, setup.seed),
-      sc: NL.safeCode(setup)
+      sc: NL.safeCode(setup),
+      // 暗号カード（その1＝場所1の読み・その2＝場所2の読み）。画像のカードは null
+      c1: isGenCard(ck.p1) ? NL.cardPuzzle(ck.p1, setup.places[0].yomi, setup.seed) : null,
+      c2: isGenCard(ck.p2) ? NL.cardPuzzle(ck.p2, setup.places[1].yomi, setup.seed + 1) : null
     };
     return PZ;
+  }
+  // ---------- 暗号の種類（準備画面で 暗号ごとに選ぶ） ----------
+  // letter＝文字ひろい（その1の元の形）・clock＝時計（その2の元の形）・mirror/tanuki/gojuon/arrow＝自動の暗号カード・image＝自分の画像
+  var PUZ_PLACE = { p1: 0, p2: 1 };
+  function cardKinds(su) {
+    su = su || setup;
+    var c = (su && su.cards) || {};
+    return { p1: (c.p1 && c.p1.kind) || 'letter', p2: (c.p2 && c.p2.kind) || 'clock' };
+  }
+  function isGenCard(k) { return NL.CARD_KINDS.indexOf(k) >= 0; }
+  function isCardKind(k) { return isGenCard(k) || k === 'image'; }
+  var SHAPE_NAME = { star: 'ほし', circle: 'まる', triangle: 'さんかく', square: 'しかく', diamond: 'ひしがた', heart: 'ハート', moon: 'つき', drop: 'しずく', cross: 'じゅうじ', hexagon: 'ろっかく', clover: 'クローバー' };
+  // カードのヒントの {shape} などに入れるもの
+  function cardHintVars(cp) {
+    if (!cp || !cp.ok) return {};
+    if (cp.kind === 'tanuki') return { pname: cp.picName, ch: cp.ch, verb: cp.pic === 'kotori' ? 'とり' : 'ぬき' };
+    if (cp.kind === 'gojuon') { var c = cp.codes[0]; return { shape: SHAPE_NAME[cp.shapes[c.col]], row: c.row + 1, k: c.kana }; }
+    if (cp.kind === 'arrow') { var ks = Array.from(cp.answer); return { k1: ks[0], k2: ks[1] }; }
+    return {};
+  }
+  // カードの絵（暗号その1＝0・その2＝1）
+  function cardHtml(i, opts) {
+    var id = i ? 'p2' : 'p1', k = cardKinds()[id];
+    if (k === 'image') return NazoCards.imageHtml(((setup.cards || {})[id] || {}).img);
+    var cp = i ? puz().c2 : puz().c1;
+    return cp && cp.ok ? NazoCards.svg(cp, i + 1) : '';
   }
   function defaultDetail(name) { return name + 'の まわりを、手で さわって さがしてみるのじゃ。シールや 紙が あるはずじゃ。'; }
   function vars() {
@@ -149,9 +180,37 @@
   function esc(s) { return NL.esc(s); }
 
   // ---------- 進み ----------
+  // 暗号を「カード」にした事件では、その暗号と、カードを手わたす場面の文・証拠を入れかえる（stories/*.json の *_card）
   function flatten() {
     STEPS = [];
-    SC.chapters.forEach(function (ch) { ch.steps.forEach(function (st) { STEPS.push({ ch: ch, st: st }); }); });
+    var ck = setup ? cardKinds() : { p1: 'letter', p2: 'clock' };
+    SC.chapters.forEach(function (ch) {
+      ch.steps.forEach(function (st) { STEPS.push({ ch: ch, st: effStep(st, ck) }); });
+    });
+  }
+  function effStep(st, ck) {
+    var e = st;
+    if (st.type === 'puzzle' && ck[st.id] && isCardKind(ck[st.id]) && SC.cards) {
+      e = Object.assign({}, st);
+      var kind = ck[st.id];
+      e.gen = 'card'; e.card = st.id === 'p2' ? 1 : 0; e.kind = kind;
+      e.question = SC.cards.question;
+      var hs = (SC.cards.hints[kind] || SC.cards.hints.image).slice(0, 2);
+      if (kind === 'image') {
+        var cc = ((setup.cards || {})[st.id]) || {};
+        if (cc.hint1) hs[0] = cc.hint1;
+        if (cc.hint2) hs[1] = cc.hint2;
+      } else {
+        var cp = NL.cardPuzzle(kind, setup.places[PUZ_PLACE[st.id]].yomi, setup.seed + e.card);
+        var hv = cardHintVars(cp);
+        hs = hs.map(function (h) { return NL.fill(h, hv); });
+      }
+      e.hints = hs.concat([st.hints[st.hints.length - 1]]);
+    } else if (st.cardFor && ck[st.cardFor] && isCardKind(ck[st.cardFor])) {
+      e = Object.assign({}, st);
+      ['lines', 'found', 'reward'].forEach(function (f) { if (st[f + '_card']) e[f] = st[f + '_card']; });
+    }
+    return e;
   }
   function stepIndex(id) { for (var i = 0; i < STEPS.length; i++) if (STEPS[i].st.id === id) return i; return -1; }
   function cur() { if (!state) return null; var i = stepIndex(state.stepId); return i >= 0 ? STEPS[i] : null; }
@@ -347,6 +406,8 @@
       case 'clock': return clockSvg(puz().cp.dial || [], w);
       case 'memo': return memoHtml(w);
       case 'diamond': return diamondHtml(w);
+      case 'card1': return '<div class="cardwrap">' + cardHtml(0) + '</div>';
+      case 'card2': return '<div class="cardwrap">' + cardHtml(1) + '</div>';
       default: return '';
     }
   }
@@ -628,6 +689,7 @@
     var P = puz();
     if (st.gen === 'letter') return P.lp.answer;
     if (st.gen === 'clock') return P.cp.answer;
+    if (st.gen === 'card') return NL.normKana(setup.places[st.card].yomi);
     return NL.normKana(st.answer || '');
   }
   function renderPuzzle(chHtml, st) {
@@ -640,6 +702,8 @@
       h += '<ol class="clues">' + P.lp.items.map(function (it, i) {
         return '<li><span class="n">' + CIRC.charAt(i) + '</span><span class="w">「' + esc(it.word) + '」</span><span class="p">' + it.pos + '文字目</span></li>';
       }).join('') + '</ol>';
+    } else if (st.gen === 'card') {
+      h += '<div class="cardwrap">' + cardHtml(st.card) + '</div>';
     } else if (st.gen === 'clock' && P.cp.ok) {
       h += '<div class="side-by-side two">' + paperHtml(260).replace('width:260px', 'width:100%') + '<div style="text-align:center">' + clockSvg(P.cp.dial, 250) + '</div></div>';
     } else if (st.body) {
@@ -1101,6 +1165,7 @@
       $app.innerHTML = frame('', '<div class="parent"><h2>おうちの方へ（準備）</h2>' + caseFileHtml() + '<button class="btn" data-act="title">おわる（事件ファイルへ）</button></div>', { noDock: true });
       return;
     }
+    if (!setup.cards) setup.cards = {};
     if (!V.draft) V.draft = JSON.parse(JSON.stringify(setup));
     var d = V.draft;
     var roles = SC.placeRoles || [];
@@ -1126,6 +1191,7 @@
     h += '<label>カギに刻む数（10〜49。金庫の番号の後ろ2けた＝この数の2倍）</label><div class="row"><input type="number" min="10" max="49" data-pf="keyNo" value="' + esc(d.keyNo) + '"><button class="btn sm" data-act="key-dice" style="flex:0 0 auto">🎲 てきとうに</button></div>';
     h += '</div>';
 
+    h += cardPanelHtml(d);
     h += '<div class="panel"><h3>② 証拠の手に入れ方</h3>' +
       chk('tag', d.modes.tag, 'NFCタグをかざす', 'iPhone はかざすと通知が出て、押すとページが開きます。Android の Chrome は画面の「スキャン」でも読めます。') +
       chk('code', d.modes.code, '捜査コード（4けた）を入れる', '印刷した紙に載っている数を入れる方法。タグが読めない端末（iPad など）でも遊べます。') +
@@ -1159,12 +1225,15 @@
 
     var v = vars();
     h += '<div class="panel"><h3>⑤ 答え（子どもに見せないで）</h3><table>' +
-      '<tr><td>暗号その1</td><td>' + esc(v.a1) + '（' + esc(v.place1) + '）</td></tr>' +
-      '<tr><td>暗号その2</td><td>' + esc(v.a2) + '（' + esc(v.place2) + '）</td></tr>' +
+      '<tr><td>暗号その1</td><td>' + esc(v.a1) + '（' + esc(v.place1) + '・' + esc(KIND_INFO[cardKinds().p1][0]) + '）</td></tr>' +
+      '<tr><td>暗号その2</td><td>' + esc(v.a2) + '（' + esc(v.place2) + '・' + esc(KIND_INFO[cardKinds().p2][0]) + '）</td></tr>' +
       '<tr><td>金庫</td><td>' + esc(v.code) + '（' + v.d1 + '・' + v.d2 + '・' + v.key + '×2）</td></tr></table></div>';
 
-    var share = baseUrl() + '#setup=' + b64(JSON.stringify({ story: kase.story, setup: setup }));
+    var shareSu = JSON.parse(JSON.stringify(setup)), dropped = false;
+    Object.keys(shareSu.cards || {}).forEach(function (k) { if (/^data:/.test(shareSu.cards[k].img || '')) { shareSu.cards[k].img = ''; dropped = true; } });
+    var share = baseUrl() + '#setup=' + b64(JSON.stringify({ story: kase.story, setup: shareSu }));
     h += '<div class="panel"><h3>⑥ ほかの端末へ準備を写す</h3><p class="small">準備をしたのが子どもの端末でないときは、このURLを子どもの端末で開いてください（LINE で送るなら、受け取ったあと Safari / Chrome で開く）。</p>' +
+      (dropped ? '<div class="warn">この端末の写真で作った暗号カードはURLに入りません。写した先の端末で、もう一度写真を選んでください（ドライブのリンクなら入ります）。</div>' : '') +
       '<div class="mono">' + esc(share) + '</div><button class="btn sm" data-copy="' + esc(share) + '">コピー</button></div>';
 
     h += '<div class="panel"><h3>⑦ 進み具合（探偵ごと）</h3>';
@@ -1191,6 +1260,72 @@
     h += '<div class="panel"><h3>⑨ 合言葉</h3><button class="btn sm" data-act="pin-change">準備画面の合言葉を変える</button></div>';
     h += '<button class="btn" data-act="title">おわる（事件ファイルへ）</button></div>';
     $app.innerHTML = frame('', h, { noDock: true });
+  }
+  // 暗号の種類（準備画面）：その1・その2 ごとに、元の暗号か 暗号カードか 自分の画像かを選ぶ
+  var KIND_INFO = {
+    letter: ['文字ひろい（画面）', '言葉の「何文字目」をひろって並べる。D-PHONE の画面に出ます。'],
+    clock: ['時計の暗号', '計算の紙と、ひらがなの時計の文字ばん。'],
+    mirror: ['鏡文字カード', '左右反対に書いた文字を読む。'],
+    tanuki: ['たぬきカード', '「た」（または「こ」）をぬいて読む。'],
+    gojuon: ['あいうえお表カード', 'マークと数で、表から字をさがす。'],
+    arrow: ['やじるし迷路カード', 'スタートから矢印のとおりに進んで読む。'],
+    image: ['自分の画像', 'Googleドライブの画像か、この端末の写真。作ったカードを使えます。']
+  };
+  function kindOk(d, id, kind) {
+    var y = d.places[PUZ_PLACE[id]].yomi;
+    if (!NL.isHiraOnly(y || '')) return '';
+    if (kind === 'letter') { var lp = NL.letterPuzzle(y, d.seed); return lp.ok ? '' : '「' + (lp.missing || []).join('・') + '」の言葉がない'; }
+    if (kind === 'clock') return NL.clockPuzzle(y, d.seed).ok ? '' : '作れない';
+    if (kind === 'image') return '';
+    var cp = NL.cardPuzzle(kind, y, (d.seed >>> 0) + PUZ_PLACE[id]);
+    return cp.ok ? '' : cp.reason;
+  }
+  function cardPanelHtml(d) {
+    var ck = cardKinds(d);
+    var h = '<div class="panel"><h3>🔐 暗号の種類</h3><p class="small">暗号の答えは、どれも次の隠し場所の読みになります。暗号カードは隠し場所に合わせて自動で作ります（印刷する紙にも載ります）。</p>';
+    ['p1', 'p2'].forEach(function (id) {
+      var i = PUZ_PLACE[id], pl = d.places[i];
+      var kinds = (id === 'p1' ? ['letter'] : ['clock']).concat(NL.CARD_KINDS, ['image']);
+      h += '<h3 style="color:var(--cyan);margin-top:12px">暗号その' + (i + 1) + '（答え＝場所' + (i + 1) + '「' + esc(pl.name) + '」の読み「' + esc(NL.normKana(pl.yomi)) + '」）</h3><div class="cardpick">';
+      kinds.forEach(function (k) {
+        var why = kindOk(d, id, k), on = ck[id] === k;
+        h += '<label class="' + (on ? 'on' : '') + (why && !on ? ' off' : '') + '"><input type="radio" name="ck-' + id + '" data-pf="ckind" data-c="' + id + '" value="' + k + '"' + (on ? ' checked' : '') + (why && !on ? ' disabled' : '') + '>' +
+          '<span><b>' + esc(KIND_INFO[k][0]) + '</b><span class="small">' + esc(why ? '× ' + why : KIND_INFO[k][1]) + '</span></span></label>';
+      });
+      h += '</div>';
+      var cc = (d.cards || {})[id] || {};
+      if (ck[id] === 'image') {
+        h += '<label>Googleドライブの共有リンク、または画像のURL</label><input type="text" data-pf="cimg" data-c="' + id + '" value="' + esc(/^data:/.test(cc.img || '') ? '' : (cc.img || '')) + '" placeholder="https://drive.google.com/file/d/…/view">' +
+          '<p class="small">ドライブで画像を右クリック（スマホは「︙」）→「共有」→ 一般的なアクセスを「<b>リンクを知っている全員</b>」にして、「リンクをコピー」したものを貼ってください。答えが「' + esc(NL.normKana(pl.yomi)) + '」になるカードにしてください。</p>' +
+          '<label>または、この端末の写真・画像を使う</label><input type="file" accept="image/*" data-pf="cfile" data-c="' + id + '">' +
+          '<p class="small">写真はこの端末の中だけに入ります（「ほかの端末へ準備を写す」URLには入りません。ほかの端末でも使うならドライブで）。</p>' +
+          '<label>博士のヒント1（空なら「カードを よーく 見るのじゃ」）</label><input type="text" data-pf="chint1" data-c="' + id + '" value="' + esc(cc.hint1 || '') + '">' +
+          '<label>博士のヒント2（空なら「おうちの人に 聞いてみるのじゃ」）。ヒント3は答えです</label><input type="text" data-pf="chint2" data-c="' + id + '" value="' + esc(cc.hint2 || '') + '">';
+        if (cc.img) h += '<div style="max-width:420px;margin:10px 0">' + NazoCards.imageHtml(cc.img) + '</div>';
+      } else if (isGenCard(ck[id]) && !kindOk(d, id, ck[id])) {
+        h += '<div style="max-width:420px;margin:8px 0">' + NazoCards.svg(NL.cardPuzzle(ck[id], pl.yomi, (d.seed >>> 0) + i), i + 1) + '</div>' +
+          '<p class="small">' + (id === 'p1' ? '最初の暗号として D-PHONE の画面に出ます（印刷した紙を予告状といっしょに渡しても遊べます）。' :
+            '場所1で手に入る証拠が「カギの写真と暗号カード」になります。印刷する紙の現場Aのカードにも載ります。') + '</p>';
+      }
+    });
+    return h + '</div>';
+  }
+  // 写真を縮めて data URL にする（長い辺1600px・JPEG）。localStorage に入れるので大きくしない
+  function shrinkImage(file, done) {
+    var rd = new FileReader();
+    rd.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1600 / Math.max(img.width, img.height));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        done(cv.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = function () { done(''); };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
   }
   // この端末の探偵（準備画面）：子どもの合言葉を忘れたとき消す・探偵ごと消す
   function agentsPanelHtml() {
@@ -1232,9 +1367,17 @@
     var h = '';
     if (errs.length) h += '<div class="panel">' + errs.map(function (e) { return '<div class="err">⚠ ' + esc(e) + '</div>'; }).join('') + '</div>';
     else {
-      var lp = NL.letterPuzzle(d.places[0].yomi, d.seed), cp = NL.clockPuzzle(d.places[1].yomi, d.seed);
-      h += '<div class="panel"><h3>できる暗号（下見）</h3><p class="small">暗号その1：' + lp.items.map(function (it) { return '「' + esc(it.word) + '」の' + it.pos + '文字目'; }).join('、') + ' → <b>' + esc(lp.answer) + '</b></p>' +
-        '<p class="small">暗号その2：' + cp.seq.map(function (s) { return esc(s.expr) + '=' + s.hour + '時「' + esc(s.kana) + '」'; }).join('、') + ' → <b>' + esc(cp.answer) + '</b></p>' +
+      var ck = cardKinds(d);
+      var line = function (id) {
+        var i = PUZ_PLACE[id], y = d.places[i].yomi, k = ck[id];
+        if (k === 'letter') { var lp = NL.letterPuzzle(y, d.seed); return lp.items.map(function (it) { return '「' + esc(it.word) + '」の' + it.pos + '文字目'; }).join('、') + ' → <b>' + esc(lp.answer) + '</b>'; }
+        if (k === 'clock') { var cp = NL.clockPuzzle(y, d.seed); return cp.seq.map(function (s) { return esc(s.expr) + '=' + s.hour + '時「' + esc(s.kana) + '」'; }).join('、') + ' → <b>' + esc(cp.answer) + '</b>'; }
+        if (k === 'image') return '自分の画像 → <b>' + esc(NL.normKana(y)) + '</b>（画像の答えがこれになっているか確かめてください）';
+        var c = NL.cardPuzzle(k, y, (d.seed >>> 0) + i);
+        return esc(KIND_INFO[k][0]) + (c.kind === 'tanuki' ? '（' + esc(c.text) + ' から「' + esc(c.ch) + '」をぬく）' : '') + ' → <b>' + esc(c.answer) + '</b>';
+      };
+      h += '<div class="panel"><h3>できる暗号（下見）</h3><p class="small">暗号その1：' + line('p1') + '</p>' +
+        '<p class="small">暗号その2：' + line('p2') + '</p>' +
         '<p class="small">金庫：' + esc(NL.safeCode(d).code) + '</p></div>';
     }
     h += dirty ? '<p class="small" style="color:var(--gold)">まだ保存していません。保存するまで、下のURL・印刷・答えは前の準備のままです。</p>' : '<p class="ok">✓ 保存済み</p>';
@@ -1277,14 +1420,19 @@
     var v = vars();
     var m = setup.modes;
     var h = '<div class="noprint"><button class="btn gold" data-act="do-print">🖨 印刷する</button><button class="btn ghost" data-act="parent">もどる</button>' +
-      '<p class="small">紙は A4 で3枚です。1枚目を場所1、2枚目を場所2 のタグのそばに隠し、3枚目の予告状は最初に子どもへ手わたします。</p></div>';
+      '<p class="small">紙は A4 で3〜4枚です。現場Aのカードを場所1、現場Bのカードを場所2 のタグのそばに隠し、予告状（と暗号カードその1）は最初に子どもへ手わたします。</p></div>';
     [0, 1].forEach(function (i) {
       h += '<div class="print-page"><div class="ts">TOP SECRET</div><div style="margin-top:8px;color:#555">' + esc(caseName(kase)) + '</div><div class="pl">' + T('[現場|げんば]' + (i ? 'B' : 'A') + '：') + esc(setup.places[i].name) + '</div>';
       if (m.code) h += '<div>' + T('[捜査|そうさ]コード') + '</div><div class="code">' + NL.sceneCode(setup.seed, i) + '</div>';
-      h += '<div style="max-width:420px">' + (i === 0 ? paperHtml(400) : memoHtml(420)) + '</div>';
+      if (i === 0 && isCardKind(cardKinds().p2)) h += '<div class="print-card">' + T('[怪盗|かいとう]の 暗号カード') + cardHtml(1) + '</div>';
+      else h += '<div style="max-width:420px">' + (i === 0 ? paperHtml(400) : memoHtml(420)) + '</div>';
       h += '<div class="parent-note">おうちの方へ：このカードを「' + esc(setup.places[i].name) + '」に隠し、そばにタグ（場所' + (i + 1) + 'のURL）を貼ってください。' +
         (m.code ? '捜査コードは D-PHONE の「捜査コードを入れる」で使います。' : '') + '</div></div>';
     });
+    if (isCardKind(cardKinds().p1)) {
+      h += '<div class="print-page"><div class="ts">CODE CARD</div><div style="margin-top:8px;color:#555">' + esc(caseName(kase)) + '</div><div class="print-card">' + cardHtml(0) + '</div>' +
+        '<div class="parent-note">おうちの方へ：暗号その1のカードです。D-PHONE の画面にも出るので、印刷しなくても遊べます。予告状といっしょに手わたすと雰囲気が出ます。</div></div>';
+    }
     h += '<div class="print-page" style="text-align:center"><div class="ts">WARNING</div><div style="margin:18px auto;max-width:360px">' + letterHtml(360) + '</div>' +
       '<div style="font-size:22px;line-height:2;text-align:left;max-width:520px;margin:0 auto">' +
       ['名[探偵|たんてい]へ', 'ダイヤ『ブルームーン』は いただいた。', 'きみの 家の どこかに かくしてある。',
@@ -1400,7 +1548,7 @@
       case 'setup-save': {
         var errs = NL.checkSetup(V.draft);
         if (errs.length) { sfx('ng'); toast('直すところが あります（赤い字）'); paintCheck(); return; }
-        var changed = JSON.stringify(V.draft.places) !== JSON.stringify(setup.places) || V.draft.keyNo !== setup.keyNo;
+        var changed = JSON.stringify(V.draft.places) !== JSON.stringify(setup.places) || V.draft.keyNo !== setup.keyNo || JSON.stringify(cardKinds(V.draft)) !== JSON.stringify(cardKinds(setup));
         setup = JSON.parse(JSON.stringify(V.draft));
         setup.ready = true; V.draft.ready = true;
         saveSetup();
@@ -1483,6 +1631,12 @@
     } else if (f === 'keyNo') {
       V.draft.keyNo = parseInt(t.value, 10) || 0;
       paintCheck();
+    } else if (f === 'cimg' || f === 'chint1' || f === 'chint2') {
+      var cid = t.getAttribute('data-c');
+      V.draft.cards = V.draft.cards || {};
+      V.draft.cards[cid] = V.draft.cards[cid] || { kind: 'image' };
+      V.draft.cards[cid][f === 'cimg' ? 'img' : f.slice(1)] = t.value.trim();
+      paintCheck();
     }
   }
   $app.addEventListener('input', onParentInput);
@@ -1490,7 +1644,24 @@
     if (route !== 'parent' || !V.draft) return;
     var t = e.target;
     var f = t.getAttribute('data-pf'), i = +t.getAttribute('data-i');
-    if (f === 'preset') {
+    if (f === 'ckind') {
+      var cid = t.getAttribute('data-c');
+      V.draft.cards = V.draft.cards || {};
+      V.draft.cards[cid] = Object.assign({}, V.draft.cards[cid] || {}, { kind: t.value });
+    } else if (f === 'cfile') {
+      var fid = t.getAttribute('data-c'), file = t.files && t.files[0];
+      if (!file) return;
+      toast('写真を読みこんでいます…');
+      shrinkImage(file, function (url) {
+        if (!url) { toast('写真が読めませんでした'); return; }
+        V.draft.cards = V.draft.cards || {};
+        V.draft.cards[fid] = Object.assign({}, V.draft.cards[fid] || {}, { kind: 'image', img: url });
+        var yy = window.scrollY; render(); window.scrollTo(0, yy);
+      });
+      return;
+    } else if (f === 'cimg') {
+      // 打ち終えたら下見を出す（描き直しは change のときだけ）
+    } else if (f === 'preset') {
       if (t.value === '') return;
       var q = PRESETS[+t.value]; V.draft.places[i].name = q.name; V.draft.places[i].yomi = q.yomi;
     } else if (t.hasAttribute('data-mode')) {
