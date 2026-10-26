@@ -426,3 +426,57 @@ h3 { font-size: 17px; color: var(--gold); }
 @media print { .cardwrap svg.ncard, .ncard-img img { box-shadow: none; } .print-card { max-width: 100%; margin: 12px auto; } }
 .card .th > .cardwrap { transform: none; flex: 1 1 auto; margin: 0; }
 .card .th > .cardwrap svg.ncard, .card .th > .cardwrap img { box-shadow: none; border-radius: 4px; }
+
+/* ---------- ピコ（2つ目の物語） ---------- */
+.msg.pico .av { border-color: #7dffb0; background: #06211a; }
+.msg.pico .bub { border-color: #2f8f66; background: rgba(125, 255, 176, .08); color: #e6fff0; }
+.msg.pico .who { color: #7dffb0; }
+.pico-photo { background: radial-gradient(circle at 50% 40%, #27306b, #070a1f); padding: 14px 14px 6px; }
+.pico-photo .cap { position: static; font-family: var(--dot); font-size: 11px; color: #bfe9ff; text-align: center; letter-spacing: .1em; }
+
+/* 事件ファイルの むずかしさ・特ちょう */
+.lv { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 13px; color: var(--muted); margin: 4px 0 2px; }
+.lv b { color: var(--gold); font-size: 15px; letter-spacing: .05em; font-weight: normal; }
+.lv b s { color: #3a3f4a; text-decoration: none; }
+.lv .ln { color: var(--cyan); }
+.feat { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }
+.feat span { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--text); background: rgba(255, 255, 255, .03); }
+
+/* 発射パネル */
+.decgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 10px; }
+.decgrid div { display: flex; align-items: center; justify-content: center; gap: 2px; background: #f4f8ff; border-radius: 10px; padding: 4px; color: #2b2116; font-size: 22px; }
+.decgrid b { font-weight: 900; }
+.pad { margin: 12px 0; padding: 14px 12px 12px; border-radius: 22px; border: 2px solid #5ee7ff; background: linear-gradient(180deg, #121a46, #070a1f); box-shadow: 0 0 24px rgba(94, 231, 255, .25) inset; }
+.pad .lbl { text-align: center; font-family: var(--dot); color: #5ee7ff; letter-spacing: .3em; font-size: 12px; }
+.padscr { display: flex; justify-content: center; gap: 8px; margin: 10px 0 12px; }
+.padscr .ps { width: 58px; height: 58px; border-radius: 12px; border: 2px solid #2f8f66; background: #02140e; display: flex; align-items: center; justify-content: center; }
+.padscr .ps.cur { border-color: #7dffb0; box-shadow: 0 0 10px rgba(125, 255, 176, .6); animation: pulse 1s infinite; }
+.padbtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 0 auto; }
+.padbtns button { position: relative; height: 78px; border-radius: 16px; border: 2px solid #2a3fb8; background: radial-gradient(circle at 50% 35%, #1d2a78, #0b1238); cursor: pointer; touch-action: manipulation; padding: 0; display: flex; align-items: center; justify-content: center; }
+.padbtns button:active { background: #2a3fb8; }
+.padbtns button.lit { border-color: #ffd36b; box-shadow: 0 0 14px rgba(255, 211, 107, .7); }
+.padbtns button i { position: absolute; top: 4px; right: 6px; font-style: normal; font-family: var(--dot); color: #ffd36b; font-size: 15px; }
+.padfn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 300px; margin: 10px auto 0; }
+.padfn button { height: 42px; border-radius: 10px; border: 1px solid #5ee7ff; background: #0b1438; color: #5ee7ff; font-size: 17px; font-family: var(--dot); cursor: pointer; }
+
+/* 発射の演出 */
+.launch { position: fixed; inset: 0; z-index: 75; background: radial-gradient(circle at 50% 30%, #27306b, #070a1f 70%); overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.launch > i { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #fff; animation: twinkle 1.6s infinite alternate; }
+@keyframes twinkle { from { opacity: .2; } to { opacity: 1; } }
+.launch .cd { font-family: var(--dot); font-size: 120px; color: #ffd36b; text-shadow: 0 0 30px rgba(255, 211, 107, .8); height: 150px; animation: slam .6s both; }
+.launch .ufo { width: 220px; animation: hover 1.2s ease-in-out infinite alternate; }
+.launch .ufo svg { width: 100%; height: auto; }
+@keyframes hover { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+.launch .t { font-family: var(--dot); font-size: 34px; color: #fff; opacity: 0; margin-top: 20px; }
+.launch.go .ufo { animation: blast 2.4s ease-in forwards; }
+.launch.go .t { animation: rise .6s 1.2s both; }
+@keyframes blast { 0% { transform: translateY(0) scale(1); } 20% { transform: translateY(10px) scale(1.05); } 100% { transform: translateY(-120vh) scale(.3) rotate(-8deg); } }
+
+/* 宇宙の なかま 認定証 */
+.cert.space { background: linear-gradient(160deg, #f4f8ff, #dfe7ff); border-color: #2a3fb8; }
+.cert.space .ttl { color: #2a3fb8; }
+.cert.space .rank { color: #d4a017; }
+.cert.space .seal { border-color: #2a3fb8; color: #2a3fb8; }
+.cert.space .st b { color: #2a3fb8; }
+.padbtns svg, .padscr svg, .decgrid svg { pointer-events: none; }
+.cert.space .seal { font-size: 11px; width: 76px; height: 76px; }

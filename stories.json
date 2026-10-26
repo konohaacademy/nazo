@@ -1,6 +1,1 @@
-[
-  {
-    "id": "bluemoon",
-    "file": "stories/bluemoon.json"
-  }
-]
+[{"id": "bluemoon", "file": "stories/bluemoon.json"}, {"id": "pico", "file": "stories/pico.json"}]

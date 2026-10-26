@@ -6,6 +6,12 @@
   'use strict';
   var FONT = "'Zen Maru Gothic','Hiragino Maru Gothic ProN','BIZ UDPGothic','Meiryo',sans-serif";
   var INK = '#2b2116', GOLD = '#c9a24a', TEAL = '#17383a';
+  // カードの見た目（物語ごと）。parchment＝羊皮紙（ブルームーン）・space＝宇宙（ピコ）
+  var THEMES = {
+    parchment: { ink: INK, sign: 'かいとう クロウ', mark: 'mask' },
+    space: { ink: '#e9f6ff', sign: 'キラリ星の ピコ', mark: 'star' }
+  };
+  var TH = THEMES.parchment;
 
   // カードの見出し（子ども向け。漢字は小3まで）
   var CARD_TEXT = {
@@ -13,6 +19,7 @@
     tanuki: '絵の どうぶつが ヒントだ',
     gojuon: 'あいうえお表で 読みとけ',
     arrow: 'スタートから やじるしの とおりに 進め',
+    alien: 'キラリ星の 文字を ほんやく せよ',
     image: 'かいとうの 暗号カード'
   };
 
@@ -23,6 +30,7 @@
 
   // ---------- わく（羊皮紙・金のふち・見出しの帯・Q番号） ----------
   function frame(no, title, body, id) {
+    if (TH === THEMES.space) return frameSpace(no, title, body, id);
     var g = 'cg' + id;
     return '<svg class="ncard" viewBox="0 0 1200 840" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(title) + '">' +
       '<defs>' +
@@ -53,8 +61,75 @@
       // 怪盗のしるし（右下）
       '<g transform="translate(1070 760)" opacity=".75"><path d="M-46 0 Q-23 -16 0 -6 Q23 -16 46 0 Q40 12 24 11 Q12 4 0 9 Q-12 4 -24 11 Q-40 12 -46 0Z" fill="' + INK + '"/>' +
       '<ellipse cx="-20" cy="1" rx="7" ry="4" fill="#c8283c"/><ellipse cx="20" cy="1" rx="7" ry="4" fill="#c8283c"/></g>' +
-      '<text x="1005" y="768" text-anchor="end" font-family="' + FONT + '" font-weight="700" font-size="24" fill="' + INK + '" opacity=".7">かいとう クロウ</text>' +
+      '<text x="1005" y="768" text-anchor="end" font-family="' + FONT + '" font-weight="700" font-size="24" fill="' + INK + '" opacity=".7">' + esc(TH.sign) + '</text>' +
       '</svg>';
+  }
+  // 宇宙のカード（こい紺に星・ネオンの ふち・むらさきの帯・わく星の Q番号）
+  function frameSpace(no, title, body, id) {
+    var g = 'cs' + id, stars = '';
+    var r = 12345 + id * 7;
+    function rnd() { r = (r * 1103515245 + 12345) % 2147483648; return r / 2147483648; }
+    for (var i = 0; i < 90; i++) {
+      var x = 40 + rnd() * 1120, y = 40 + rnd() * 760, rr = rnd() < 0.85 ? 1 + rnd() * 1.6 : 2.6 + rnd() * 1.4;
+      stars += '<circle cx="' + x.toFixed(0) + '" cy="' + y.toFixed(0) + '" r="' + rr.toFixed(1) + '" fill="#fff" opacity="' + (0.35 + rnd() * 0.6).toFixed(2) + '"/>';
+    }
+    return '<svg class="ncard" viewBox="0 0 1200 840" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(title) + '">' +
+      '<defs><radialGradient id="' + g + 'b" cx="70%" cy="30%" r="90%"><stop offset="0" stop-color="#27306b"/><stop offset=".55" stop-color="#121640"/><stop offset="1" stop-color="#070a1f"/></radialGradient>' +
+      '<radialGradient id="' + g + 'n" cx="20%" cy="80%" r="45%"><stop offset="0" stop-color="#b43cff" stop-opacity=".35"/><stop offset="1" stop-color="#b43cff" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="' + g + 'h" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5b2aa8"/><stop offset="1" stop-color="#2a3fb8"/></linearGradient>' +
+      '<radialGradient id="' + g + 'p" cx="35%" cy="35%" r="70%"><stop offset="0" stop-color="#ffd36b"/><stop offset="1" stop-color="#e0662a"/></radialGradient>' +
+      '<filter id="' + g + 'gl"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>' +
+      '<rect width="1200" height="840" rx="18" fill="url(#' + g + 'b)"/><rect width="1200" height="840" rx="18" fill="url(#' + g + 'n)"/>' + stars +
+      '<rect x="18" y="18" width="1164" height="804" rx="14" fill="none" stroke="#5ee7ff" stroke-width="5" filter="url(#' + g + 'gl)"/>' +
+      '<rect x="34" y="34" width="1132" height="772" rx="10" fill="none" stroke="#5ee7ff" stroke-width="1.5" opacity=".5" stroke-dasharray="14 10"/>' +
+      '<rect x="150" y="62" width="990" height="76" rx="38" fill="url(#' + g + 'h)"/>' +
+      '<text x="660" y="114" text-anchor="middle" font-family="' + FONT + '" font-weight="700" font-size="' + (title.length > 15 ? 36 : 42) + '" fill="#fff" letter-spacing="2">' + esc(title) + '</text>' +
+      // わく星の Q番号
+      '<ellipse cx="128" cy="100" rx="96" ry="22" fill="none" stroke="#ffd36b" stroke-width="5" transform="rotate(-16 128 100)" opacity=".9"/>' +
+      '<circle cx="128" cy="100" r="58" fill="url(#' + g + 'p)"/>' +
+      '<path d="M50 112 Q128 140 206 88" fill="none" stroke="#ffd36b" stroke-width="5" transform="rotate(-2 128 100)"/>' +
+      '<text x="128" y="122" text-anchor="middle" font-family="Georgia,\'Times New Roman\',serif" font-style="italic" font-weight="700" font-size="60" fill="#3a1606">Q' + no + '</text>' +
+      body +
+      '<g transform="translate(1078 762)"><polygon points="0,-20 6,-6 21,-6 9,3 13,18 0,9 -13,18 -9,3 -21,-6 -6,-6" fill="#ffd36b"/></g>' +
+      '<text x="1048" y="770" text-anchor="end" font-family="' + FONT + '" font-weight="700" font-size="24" fill="#bfe9ff">' + esc(TH.sign) + '</text>' +
+      '</svg>';
+  }
+  // ---------- 宇宙文字 ----------
+  // g＝logic.js の ALIEN_GLYPHS の1つ。cx,cy＝まんなか、s＝点と点の あいだ
+  function glyph(g, cx, cy, s, color, w) {
+    var h = '<g stroke="' + color + '" stroke-width="' + (w || s * 0.22) + '" stroke-linecap="round" stroke-linejoin="round" fill="none">';
+    g.segs.forEach(function (sg) {
+      h += '<line x1="' + (cx + (sg[0][0] - 1) * s) + '" y1="' + (cy + (sg[0][1] - 1) * s) + '" x2="' + (cx + (sg[1][0] - 1) * s) + '" y2="' + (cy + (sg[1][1] - 1) * s) + '"/>';
+    });
+    h += '</g>';
+    if (g.dot) h += '<circle cx="' + (cx + (g.dot[0] - 1) * s) + '" cy="' + (cy + (g.dot[1] - 1) * s) + '" r="' + s * 0.2 + '" fill="' + color + '"/>';
+    return h;
+  }
+  function glyphSvg(g, size, color) {
+    return '<svg viewBox="0 0 100 100" width="' + size + '" height="' + size + '" aria-hidden="true">' + glyph(g, 50, 50, 30, color || '#5ee7ff', 8) + '</svg>';
+  }
+  function alien(cp, GL) {
+    var n = cp.codes.length, tile = Math.min(112, Math.floor(960 / n)), gap = Math.min(14, tile * 0.12), w = n * tile + (n - 1) * gap;
+    var x0 = 600 - w / 2, y0 = 168;
+    // 通信（上）
+    var h = '<text x="600" y="' + (y0 + 8) + '" text-anchor="middle" font-family="' + FONT + '" font-weight="700" font-size="24" fill="#bfe9ff">▼ ピコの レーダーからの 通信</text>';
+    cp.codes.forEach(function (c, i) {
+      var x = x0 + i * (tile + gap), y = y0 + 28;
+      h += '<rect x="' + x + '" y="' + y + '" width="' + tile + '" height="' + tile + '" rx="16" fill="#0b1438" stroke="#5ee7ff" stroke-width="3"/>' +
+        glyph(GL[c.glyph], x + tile / 2, y + tile / 2, tile * 0.28, '#5ee7ff');
+      if (c.mark) h += markBadge(c.mark, x + tile - 6, y + 6, tile * 0.22);
+    });
+    // ほんやく表（下）
+    var cols = 5, cw = 190, ch = 112, tx = 600 - (cols * cw) / 2, ty = 380;
+    h += '<rect x="' + (tx - 16) + '" y="' + (ty - 46) + '" width="' + (cols * cw + 32) + '" height="' + (Math.ceil(cp.decoder.length / cols) * ch + 60) + '" rx="18" fill="#f4f8ff" opacity=".96"/>' +
+      '<text x="600" y="' + (ty - 14) + '" text-anchor="middle" font-family="' + FONT + '" font-weight="900" font-size="26" fill="#2a3fb8">キラリ星の ほんやく表</text>';
+    cp.decoder.forEach(function (d, i) {
+      var cx = tx + (i % cols) * cw, cy = ty + Math.floor(i / cols) * ch;
+      h += '<rect x="' + (cx + 8) + '" y="' + (cy + 6) + '" width="' + (cw - 16) + '" height="' + (ch - 14) + '" rx="12" fill="#fff" stroke="#9db4ff" stroke-width="2"/>' +
+        glyph(GL[d.glyph], cx + 54, cy + ch / 2 - 2, 21, '#2a3fb8') +
+        '<text x="' + (cx + 94) + '" y="' + (cy + ch / 2 + 2) + '" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="38" fill="' + INK + '">＝' + esc(d.kana) + '</text>';
+    });
+    return h;
   }
   function corners(g) {
     var h = '';
@@ -64,8 +139,8 @@
     });
     return h;
   }
-  function bigText(text, cx, cy, size, extra) {
-    return '<text x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + size + '" fill="' + INK + '"' + (extra || '') + '>' + esc(text) + '</text>';
+  function bigText(text, cx, cy, size, extra, color) {
+    return '<text x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + size + '" fill="' + (color || TH.ink) + '"' + (extra || '') + '>' + esc(text) + '</text>';
   }
 
   // ---------- 鏡文字 ----------
@@ -128,7 +203,7 @@
       // 吹き出しの紙に 字
       '<rect x="500" y="320" width="640" height="250" rx="26" fill="#fffdf4" stroke="#5a3d1b" stroke-width="4"/>' +
       '<path d="M500 420 L462 450 L500 470Z" fill="#fffdf4" stroke="#5a3d1b" stroke-width="4" stroke-linejoin="round"/><rect x="496" y="418" width="10" height="56" fill="#fffdf4"/>' +
-      bigText(cp.text, 820, 445, size, ' letter-spacing="' + Math.round(size * 0.04) + '"');
+      bigText(cp.text, 820, 445, size, ' letter-spacing="' + Math.round(size * 0.04) + '"', INK);
   }
 
   // ---------- あいうえお表 ----------
@@ -260,14 +335,20 @@
 
   // ---------- 入口 ----------
   // cp＝cardPuzzle の結果。no＝カードの番号（1・2）
-  function svg(cp, no) {
+  // opts.theme＝'parchment'|'space'、opts.glyphs＝logic.js の ALIEN_GLYPHS（宇宙文字のカードで使う）
+  function svg(cp, no, opts) {
     if (!cp || !cp.ok) return '';
+    opts = opts || {};
+    TH = THEMES[opts.theme] || THEMES.parchment;
     var id = ++uid;
-    var body = cp.kind === 'mirror' ? mirror(cp) : cp.kind === 'tanuki' ? tanuki(cp) : cp.kind === 'gojuon' ? gojuon(cp) : cp.kind === 'arrow' ? arrow(cp) : '';
-    return frame(no || 1, CARD_TEXT[cp.kind] || '', body, id);
+    var body = cp.kind === 'mirror' ? mirror(cp) : cp.kind === 'tanuki' ? tanuki(cp) : cp.kind === 'gojuon' ? gojuon(cp) : cp.kind === 'arrow' ? arrow(cp) :
+      cp.kind === 'alien' ? alien(cp, opts.glyphs || (root.NazoLogic && root.NazoLogic.ALIEN_GLYPHS) || []) : '';
+    var out = frame(no || 1, CARD_TEXT[cp.kind] || '', body, id);
+    TH = THEMES.parchment;
+    return out;
   }
 
-  var api = { svg: svg, CARD_TEXT: CARD_TEXT, imageSrc: imageSrc, imageHtml: imageHtml, driveId: driveId };
+  var api = { svg: svg, glyphSvg: glyphSvg, THEMES: THEMES, CARD_TEXT: CARD_TEXT, imageSrc: imageSrc, imageHtml: imageHtml, driveId: driveId };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NazoCards = api;
 })(this);

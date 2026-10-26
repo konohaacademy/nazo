@@ -152,7 +152,7 @@
 
   // ---------- 暗号カード（隠し場所の読みから作る。絵は cards.js が描く） ----------
   // ⚠ どの種類も答えは読みそのもの。作れない読みは ok:false と理由を返し、準備画面で選べなくする。
-  var CARD_KINDS = ['mirror', 'tanuki', 'gojuon', 'arrow'];
+  var CARD_KINDS = ['mirror', 'tanuki', 'gojuon', 'arrow', 'alien'];
   var DAKU_OF = { 'が': 'か', 'ぎ': 'き', 'ぐ': 'く', 'げ': 'け', 'ご': 'こ', 'ざ': 'さ', 'じ': 'し', 'ず': 'す', 'ぜ': 'せ', 'ぞ': 'そ', 'だ': 'た', 'ぢ': 'ち', 'づ': 'つ', 'で': 'て', 'ど': 'と', 'ば': 'は', 'び': 'ひ', 'ぶ': 'ふ', 'べ': 'へ', 'ぼ': 'ほ' };
   var HAN_OF = { 'ぱ': 'は', 'ぴ': 'ひ', 'ぷ': 'ふ', 'ぺ': 'へ', 'ぽ': 'ほ' };
   // あいうえお表（列＝あ行〜ん。行＝上から1〜5。空きは ''）
@@ -174,7 +174,8 @@
   }
   // たぬき（「た」ぬき）・ことり（「こ」とり）：読みに よけいな字を まぜ、絵が「どの字を とるか」を教える
   var TANUKI = [{ ch: 'た', pic: 'tanuki', name: 'たぬき' }, { ch: 'こ', pic: 'kotori', name: 'ことり' }];
-  function cardPuzzle(kind, yomi, seed) {
+  // include＝ほんやく表に かならず入れる字（あとの仕掛けで使う字。物語の JSON の padWord）
+  function cardPuzzle(kind, yomi, seed, include) {
     var ks = kanaList(yomi);
     if (!ks.length) return { ok: false, reason: '読みが空です' };
     var answer = ks.join('');
@@ -250,8 +251,70 @@
       }
       return { ok: false, reason: '迷路が作れませんでした' };
     }
+    if (kind === 'alien') {
+      var msg = [];
+      for (var m = 0; m < ks.length; m++) {
+        var bk = baseKana(ks[m]), gi = alienIndex(bk);
+        if (gi < 0) return { ok: false, reason: '「' + ks[m] + '」は 宇宙文字に ありません' };
+        msg.push({ glyph: gi, mark: markOf(ks[m]), kana: ks[m] });
+      }
+      var need = {};
+      msg.forEach(function (c) { need[ALIEN_KANA[c.glyph]] = 1; });
+      kanaList(include || '').forEach(function (k) { if (alienIndex(baseKana(k)) >= 0) need[baseKana(k)] = 1; });
+      // ほんやく表は 15字。足りないぶんは ほかの字（まぎらわしい ものも 入る）
+      var rest = shuffle(ALIEN_KANA.filter(function (k) { return !need[k]; }), r);
+      while (Object.keys(need).length < 15 && rest.length) need[rest.pop()] = 1;
+      var dec = ALIEN_KANA.filter(function (k) { return need[k]; }).map(function (k) { return { kana: k, glyph: alienIndex(k) }; });
+      return { ok: true, kind: kind, answer: answer, codes: msg, decoder: dec };
+    }
     return { ok: false, reason: '知らない種類です' };
   }
+  // 宇宙文字のカードを、ほんやく表だけで 読み戻す（テスト用）
+  function readAlien(cp) {
+    var BACK = {};
+    Object.keys(DAKU_OF).forEach(function (k) { BACK['daku' + DAKU_OF[k]] = k; });
+    Object.keys(HAN_OF).forEach(function (k) { BACK['han' + HAN_OF[k]] = k; });
+    Object.keys(SMALL).forEach(function (k) { BACK['small' + SMALL[k]] = k; });
+    var map = {}; cp.decoder.forEach(function (d) { map[d.glyph] = d.kana; });
+    return cp.codes.map(function (c) { var b = map[c.glyph]; if (!b) return '?'; return c.mark ? BACK[c.mark + b] : b; }).join('');
+  }
+  // ---------- 宇宙文字（キラリ星の 文字） ----------
+  // 3×3 の点を つなぐ 3本の線（＋点1つ）で 1字。あいうえお表の 46字に 1つずつ。決まった形なので、遊ぶたびに同じ字になる
+  // （覚えてしまっても よい。物語の中の「ことば」なので）
+  var ALIEN_KANA = GOJUON.join('').replace(/ /g, '').split('');
+  var ALIEN_GLYPHS = (function () {
+    var pts = [], segs = [];
+    for (var y = 0; y < 3; y++) for (var x = 0; x < 3; x++) pts.push([x, y]);
+    // となりどうし（たて・よこ）と、小さい四角の ななめ
+    for (var a = 0; a < 9; a++) for (var b = a + 1; b < 9; b++) {
+      var dx = Math.abs(pts[a][0] - pts[b][0]), dy = Math.abs(pts[a][1] - pts[b][1]);
+      if (dx + dy === 1 || (dx === 1 && dy === 1)) segs.push([a, b]);
+    }
+    var r = rng(20261026), out = [], seen = {};
+    while (out.length < ALIEN_KANA.length) {
+      var pick = shuffle(segs, r).slice(0, 3);
+      // 3本が つながっていること（ばらばらの線は 字に見えない）
+      var nodes = {}; pick.forEach(function (sg) { nodes[sg[0]] = (nodes[sg[0]] || 0) + 1; nodes[sg[1]] = (nodes[sg[1]] || 0) + 1; });
+      var keys = Object.keys(nodes).map(Number), grp = {}, stack = [keys[0]];
+      while (stack.length) { var n = stack.pop(); if (grp[n]) continue; grp[n] = 1; pick.forEach(function (sg) { if (sg[0] === n) stack.push(sg[1]); if (sg[1] === n) stack.push(sg[0]); }); }
+      if (Object.keys(grp).length !== keys.length) continue;
+      // 点は 線の通らない ところに1つ
+      var free = []; for (var q = 0; q < 9; q++) if (!nodes[q]) free.push(q);
+      var dot = free.length ? free[Math.floor(r() * free.length)] : -1;
+      var key = pick.map(function (sg) { return sg.join('-'); }).sort().join('|') + '#' + dot;
+      // 左右反対の形も 同じとみなす（見分けにくいので）
+      var mir = function (i) { return (2 - (i % 3)) + Math.floor(i / 3) * 3; };
+      var mkey = pick.map(function (sg) { return [mir(sg[0]), mir(sg[1])].sort(function (u, v) { return u - v; }).join('-'); }).sort().join('|') + '#' + (dot >= 0 ? mir(dot) : -1);
+      if (seen[key] || seen[mkey]) continue;
+      seen[key] = seen[mkey] = 1;
+      out.push({ segs: pick.map(function (sg) { return [pts[sg[0]], pts[sg[1]]]; }), dot: dot >= 0 ? pts[dot] : null });
+    }
+    return out;
+  })();
+  function alienIndex(base) { return ALIEN_KANA.indexOf(base); }
+  // ゛゜小 をはがした字（あいうえお表のもと）
+  function baseKana(k) { return DAKU_OF[k] || HAN_OF[k] || SMALL[k] || k; }
+  function markOf(k) { return DAKU_OF[k] ? 'daku' : HAN_OF[k] ? 'han' : SMALL[k] ? 'small' : ''; }
   // 矢印迷路を、スタートから実際にたどって読む（テストと準備画面の下見で使う）
   function walkArrow(cp) {
     var x = cp.start[0], y = cp.start[1], out = '', guard = 0;
@@ -369,7 +432,7 @@
   var api = {
     toHira: toHira, normKana: normKana, looseKana: looseKana, sameAnswer: sameAnswer,
     kanaList: kanaList, isHiraOnly: isHiraOnly, rng: rng, shuffle: shuffle,
-    WORDS: WORDS, letterPuzzle: letterPuzzle, CARD_KINDS: CARD_KINDS, cardPuzzle: cardPuzzle, walkArrow: walkArrow, readGojuon: readGojuon, gojuonPos: gojuonPos, clockPuzzle: clockPuzzle, makeExpr: makeExpr, evalExpr: evalExpr,
+    WORDS: WORDS, letterPuzzle: letterPuzzle, CARD_KINDS: CARD_KINDS, cardPuzzle: cardPuzzle, walkArrow: walkArrow, readAlien: readAlien, ALIEN_KANA: ALIEN_KANA, ALIEN_GLYPHS: ALIEN_GLYPHS, alienIndex: alienIndex, baseKana: baseKana, markOf: markOf, readGojuon: readGojuon, gojuonPos: gojuonPos, clockPuzzle: clockPuzzle, makeExpr: makeExpr, evalExpr: evalExpr,
     sceneCode: sceneCode, encodeTag: encodeTag, decodeTag: decodeTag, safeCode: safeCode,
     checkSetup: checkSetup, fill: fill, esc: esc, rubyHtml: rubyHtml, speechText: speechText, plainText: plainText
   };
