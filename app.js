@@ -7,6 +7,7 @@
 // ⚠ iPhone はタグをかざすと Safari が別のページとして開く。Safari で遊んでいれば記録は同じなのでそのまま進む。
 //   ホーム画面のアイコンから遊んでいると記録が別なので、開いたページに捜査コードを出して手で入れてもらう。
 // ⚠ 隠し場所の準備（setup）も端末ごと。親が別の端末で準備したら「この準備を写すURL」で子どもの端末へ写す。
+// 探偵（遊ぶ人）：同じ端末で何人も遊べる。進み具合は 事件×探偵 ごと。名前＋（つけたいときだけ）絵の合言葉3つでログインする。
 (function () {
   'use strict';
   var NL = window.NazoLogic;
@@ -15,9 +16,14 @@
   var K_CASES = 'nazo.v2.cases', K_CUR = 'nazo.v2.cur', K_PIN = 'nazo.v2.pin', K_PREF = 'nazo.v1.pref', K_PARENT = 'nazo.v1.parent';
   // ⚠ v1（事件が1つだけだった版）の置き場。最初に開いたとき事件1へ写す（消さない）
   var K_V1_SETUP = 'nazo.v1.setup', K_V1_STATE = 'nazo.v1.state';
-  function stateKey(id) { return 'nazo.v2.state.' + id; }
+  var K_AGENTS = 'nazo.v2.agents', K_ME = 'nazo.v2.me';
+  // 進み具合は 事件×探偵 ごと。ログインしていなければ置き場が無い（null）
+  function stateKey(cid, aid) { aid = aid || (ME && ME.id); return aid ? 'nazo.v2.state.' + cid + '.' + aid : null; }
+  // ⚠ 探偵を作る前（2026-10-26 まで）の置き場。最初に開いたとき、記録の名前の探偵へ写す（消さない）
+  function legacyKey(cid) { return 'nazo.v2.state.' + cid; }
 
   var SC = null, PRESETS = [], STEPS = [], STORIES = {}, REG = [], CASES = [], kase = null, PIN = '';
+  var AGENTS = [], ME = null;   // 探偵の一覧（{id, name, icon, pass}）と、いまログインしている探偵
   var setup = null, state = null, pref = { sound: true, autoSpeak: false, lastName: '' };
   var route = 'title';
   var V = {};            // いまの画面だけの一時的なもの
@@ -26,9 +32,9 @@
   var nfc = null;        // { ac: AbortController, step: stepId }
 
   // ---------- しまう ----------
-  function lsGet(k) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
-  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
-  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* 使えない環境 */ } }
+  function lsGet(k) { if (!k) return null; try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  function lsSet(k, v) { if (!k) return false; try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function lsDel(k) { if (!k) return; try { localStorage.removeItem(k); } catch (e) { /* 使えない環境 */ } }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
   function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* 使えない環境 */ } }
 
@@ -62,6 +68,36 @@
   }
   function caseState(c) { var st = lsGet(stateKey(c.id)); return st && st.seed === c.setup.seed ? st : null; }
   function caseName(c) { return (c.setup && c.setup.title) || (STORIES[c.story] && STORIES[c.story].subtitle) || '事件'; }
+
+  // ---------- 探偵（遊ぶ人） ----------
+  var AVATARS = ['🕵️', '🦊', '🐱', '🐼', '🦁', '🐸', '🐧', '🦖', '🐰', '🐻', '🦄', '🤖'];
+  // 合言葉は絵を3つ（字が読めない子でも入れられる）。順番も合わせる
+  var PASS_SYM = ['🍎', '🐶', '⭐', '🚀', '🌙', '🍙', '🚗', '🎈', '🐟'];
+  function newAgentId() { return 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); }
+  function saveAgents() { lsSet(K_AGENTS, AGENTS); }
+  function agentById(id) { for (var i = 0; i < AGENTS.length; i++) if (AGENTS[i].id === id) return AGENTS[i]; return null; }
+  function sameName(a, b) { return NL.normKana(String(a || '').trim()) === NL.normKana(String(b || '').trim()); }
+  function agentByName(nm) { for (var i = 0; i < AGENTS.length; i++) if (sameName(AGENTS[i].name, nm)) return AGENTS[i]; return null; }
+  function addAgent(name, icon, pass) {
+    var a = { id: newAgentId(), name: String(name).slice(0, 12), icon: icon || AVATARS[AGENTS.length % AVATARS.length], pass: pass || '', createdAt: Date.now() };
+    AGENTS.push(a); saveAgents();
+    return a;
+  }
+  // ログイン（null でログアウト）。いま選んでいる事件の記録をその探偵のものにする
+  function login(a) {
+    ME = a || null;
+    if (ME) lsSet(K_ME, ME.id); else lsDel(K_ME);
+    selectCase(kase && kase.id);
+  }
+  function agentLabel(a) { return a ? a.icon + ' ' + esc(a.name) : ''; }
+  // 事件ごとに、この端末の探偵それぞれの記録（準備画面で使う）
+  function caseStates(c) {
+    return AGENTS.map(function (a) {
+      var st = lsGet(stateKey(c.id, a.id));
+      return { agent: a, st: st && st.seed === c.setup.seed ? st : null };
+    });
+  }
+  function delCaseStates(cid) { AGENTS.forEach(function (a) { lsDel(stateKey(cid, a.id)); }); }
   // 別のページ（タグで開いた Safari のタブ）が先に進めていたら、上書きせずにそちらを採る
   function save() {
     if (!kase) return false;
@@ -352,6 +388,7 @@
       else if (route === 'print') renderPrint();
       else if (route === 'tag') renderTag();
       else if (route === 'name') renderName();
+      else if (route === 'pass') renderPass();
       else if (route === 'cert') renderCert();
       else if (route === 'play' && state) renderPlay();
       else { route = 'title'; renderTitle(); }
@@ -385,7 +422,10 @@
       '<div class="logo" style="font-size:30px">' + R('[探偵|たんてい]ケータイ') + '<br>D-PHONE</div>' +
       '<div class="syslog">' + ['&gt; D-PHONE SYSTEM BOOT ...', '&gt; RADAR ....... OK', '&gt; NFC SCANNER .. ' + (hasNdef() ? 'OK' : 'TAG-LINK'), '&gt; CASE FILE .... ' + CASES.length + ' 件'].map(function (l, i) {
         return '<div style="animation-delay:' + (0.3 + i * 0.35) + 's">' + l + '</div>';
-      }).join('') + '</div>' +
+      }).join('') + '</div>';
+    if (!ME) { $app.innerHTML = frame('', h + loginHtml() + '<button class="foot-link" data-act="parent">おうちの方へ（準備・事件を作る）</button></div>', { noDock: true }); return; }
+    h += '<div class="agentbar"><span class="av">' + ME.icon + '</span><span class="an">' + esc(ME.name) + ' ' + T('[探偵|たんてい]') + '</span>' +
+      '<button class="btn sm ghost" data-act="logout">' + T('こうたい') + '</button></div>' +
       '<h2 style="text-align:left;margin-top:8px">📁 ' + R('[事件|じけん]ファイル') + '</h2>' +
       '<p class="small" style="text-align:left;margin:0 0 4px">' + R('ときたい [事件|じけん]を えらんでね') + '</p>';
     if (!CASES.length) h += '<div class="warn">' + R('まだ [事件|じけん]が ありません。おうちの人に 作ってもらおう。') + '</div>';
@@ -418,15 +458,70 @@
     $app.innerHTML = frame('', h, { noDock: true });
   }
 
+  // タイトルの「だれが あそぶ？」（ログインしていないとき）
+  function loginHtml() {
+    var h = '<h2 style="text-align:left;margin-top:8px">🪪 ' + T('だれが あそぶ？') + '</h2>';
+    if (!AGENTS.length) h += '<p class="small" style="text-align:left">' + T('はじめての [探偵|たんてい]は「あたらしい [探偵|たんてい]」で 名前を とうろくしてね。') + '</p>';
+    else h += '<p class="small" style="text-align:left;margin:0 0 6px">' + T('じぶんの 名前を おしてね') + '</p>';
+    h += '<div class="agents">' + AGENTS.map(function (a) {
+      return '<button class="agentcard" data-act="agent-pick" data-agent="' + a.id + '"><span class="av">' + a.icon + '</span><span class="an">' + esc(a.name) + '</span>' +
+        (a.pass ? '<span class="lk">🔒</span>' : '') + '</button>';
+    }).join('') + '<button class="agentcard add" data-act="agent-new"><span class="av">＋</span><span class="an">' + T('あたらしい [探偵|たんてい]') + '</span></button></div>';
+    return h;
+  }
+  // あたらしい探偵：名前・アイコン・合言葉（つけなくてもよい）
   function renderName() {
+    V.icon = V.icon || AVATARS[AGENTS.length % AVATARS.length];
+    V.pass = V.pass || [];
     var h = '<h2>' + T('[探偵|たんてい]の 名前を 入れてね') + '</h2>' +
       '<p class="lead">' + T('D-PHONE に 名前を とうろくするよ。[認定証|にんていしょう]にも のるよ。') + '</p>' +
       '<input class="inp" id="nm" maxlength="12" autocomplete="off" placeholder="なまえ" value="' + esc(V.name || '') + '">' +
+      '<h3 class="lbl">' + T('アイコン') + '</h3><div class="avs">' + AVATARS.map(function (ic) {
+        return '<button class="avbtn' + (ic === V.icon ? ' on' : '') + '" data-act="agent-icon" data-icon="' + ic + '">' + ic + '</button>';
+      }).join('') + '</div>' +
+      '<h3 class="lbl">' + T('合言葉（えを 3つ）') + '</h3>' +
+      '<p class="small">' + T('ほかの 人に 名前を つかわれないように、すきな えを 3つ じゅんばんに おしてね。つけなくても いいよ。') + '</p>' +
+      '<div id="passbox">' + passPadHtml(V.pass) + '</div>' +
       '<button class="btn" data-act="name-ok">とうろく</button>' +
       '<button class="btn ghost" data-act="title">もどる</button>';
     $app.innerHTML = frame('', h, { noDock: true });
-    var inp = document.getElementById('nm');
-    setTimeout(function () { try { inp.focus(); } catch (e) { /* 無し */ } }, 50);
+  }
+  // 合言葉の入力（3つのます＋9つの絵）
+  function passPadHtml(arr) {
+    var h = '<div class="slots">';
+    for (var i = 0; i < 3; i++) h += '<div class="slot' + (i === arr.length ? ' cur' : '') + '">' + (arr[i] != null ? PASS_SYM[arr[i]] : '') + '</div>';
+    h += '</div><div class="pp">' + PASS_SYM.map(function (e, i) { return '<button data-ps="' + i + '">' + e + '</button>'; }).join('') + '</div>' +
+      '<div class="kb-fn" style="grid-template-columns:1fr 1fr"><button data-psf="bs">⌫</button><button data-psf="clr">けす</button></div>';
+    return h;
+  }
+  function passKey(i, fn) {
+    V.pass = V.pass || [];
+    if (fn === 'bs') V.pass.pop();
+    else if (fn === 'clr') V.pass = [];
+    else if (V.pass.length < 3) V.pass.push(i);
+    sfx('key');
+    var box = document.getElementById('passbox'); if (box) box.innerHTML = passPadHtml(V.pass);
+    if (route === 'pass' && V.pass.length === 3) later(checkPass, 200);
+  }
+  // 合言葉をつけた探偵のログイン
+  function renderPass() {
+    var a = agentById(V.agent);
+    if (!a) { route = 'title'; renderTitle(); return; }
+    V.pass = V.pass || [];
+    var h = '<div style="text-align:center"><div style="font-size:64px">' + a.icon + '</div><h2>' + esc(a.name) + ' ' + T('[探偵|たんてい]') + '</h2>' +
+      '<p class="lead">' + T('合言葉の えを 3つ、じゅんばんに おしてね') + '</p>' +
+      '<div id="passbox">' + passPadHtml(V.pass) + '</div><div class="wrong" id="wrong"></div>' +
+      '<button class="btn ghost" data-act="title">もどる</button>' +
+      '<p class="small">' + T('わすれたら おうちの人に 言ってね（[準備|じゅんび]の 画面で 消せるよ）') + '</p></div>';
+    $app.innerHTML = frame('', h, { noDock: true });
+  }
+  function checkPass() {
+    var a = agentById(V.agent);
+    if (!a) return;
+    if (V.pass.join(',') === a.pass) { sfx('ok'); login(a); V = {}; route = 'title'; render(); window.scrollTo(0, 0); return; }
+    sfx('ng'); V.pass = [];
+    var box = document.getElementById('passbox'); if (box) { box.innerHTML = passPadHtml(V.pass); box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
+    var w = document.getElementById('wrong'); if (w) w.innerHTML = T('合言葉が ちがうみたい');
   }
 
   // ---------- 遊ぶ ----------
@@ -797,7 +892,9 @@
         '<p class="lead">' + T('[現場|げんば]の [捜査|そうさ]コードは') + '</p>' +
         '<div style="font-family:var(--dot);font-size:58px;letter-spacing:.3em;color:var(--gold);text-shadow:0 0 16px rgba(255,207,74,.7)">' + esc(j.code) + '</div>' +
         '<p class="lead">' + T('いつもの D-PHONE の 画面で「[捜査|そうさ]コードを 入れる」を おして、この 数を 入れてね。') + '</p>';
-      if (j.kind === 'othercase') {
+      if (!ME) {
+        h += '<p class="lead">' + T('（さきに じぶんの 名前で D-PHONE に 入ってね）') + '</p>';
+      } else if (j.kind === 'othercase') {
         h += '<div class="warn">おうちの方へ：このタグは、この端末に入っている事件とは別の準備で作られています。準備画面の「ほかの端末へ準備を写す」で、遊ぶ端末の準備をそろえてください。</div>';
       } else if (isIOS()) {
         h += '<p class="small">おうちの方へ：iPhone でホーム画面のアイコンから遊んでいると、タグで開くページ（Safari）とは記録が別になるため、このコードが出ます。Safari のまま遊ぶと自動で進みます。</p>';
@@ -1070,28 +1167,50 @@
     h += '<div class="panel"><h3>⑥ ほかの端末へ準備を写す</h3><p class="small">準備をしたのが子どもの端末でないときは、このURLを子どもの端末で開いてください（LINE で送るなら、受け取ったあと Safari / Chrome で開く）。</p>' +
       '<div class="mono">' + esc(share) + '</div><button class="btn sm" data-copy="' + esc(share) + '">コピー</button></div>';
 
-    h += '<div class="panel"><h3>⑦ 進み具合</h3>';
+    h += '<div class="panel"><h3>⑦ 進み具合（探偵ごと）</h3>';
+    var rows = caseStates(kase);
+    if (rows.length) {
+      h += '<table>' + rows.map(function (r) {
+        var stt = !r.st ? '未着手' : r.st.stepId === 'done' ? '解決ずみ' : '捜査中：' + esc(chapterOf(kase, r.st) || 'プロローグ');
+        return '<tr><td>' + agentLabel(r.agent) + (ME && r.agent.id === ME.id ? '<br><span class="small">ログイン中</span>' : '') + '</td><td>' + stt + '</td><td>' +
+          (r.st ? '<button class="btn sm red" data-act="reset-agent" data-agent="' + r.agent.id + '">記録を消す</button>' : '') + '</td></tr>';
+      }).join('') + '</table>';
+    } else h += '<p class="small">まだ探偵が登録されていません（子どもがタイトルの「あたらしい探偵」で登録します）。</p>';
     if (state) {
       var c = cur();
-      h += '<p>名前：' + esc(state.name) + '　いま：' + (state.stepId === 'done' ? '事件解決ずみ' : esc(Plain(c ? c.ch.title : '')) + '（' + esc(state.stepId) + '）') + '</p>' +
+      h += '<p style="margin-top:12px">ためし用（ログイン中の ' + agentLabel(ME) + ' の記録）　いま：' + (state.stepId === 'done' ? '事件解決ずみ' : esc(Plain(c ? c.ch.title : '')) + '（' + esc(state.stepId) + '）') + '</p>' +
         '<label>ここから遊ぶ（ためし用）</label><select id="jump">' + STEPS.map(function (s) {
           return '<option value="' + s.st.id + '"' + (s.st.id === state.stepId ? ' selected' : '') + '>' + esc(Plain(s.ch.title)) + ' / ' + esc(s.st.id) + '</option>';
         }).join('') + '</select><button class="btn sm" data-act="jump">ここへ移る</button>';
-    } else h += '<p class="small">まだ遊んでいません。</p>';
-    h += '<button class="btn red" data-act="reset">この事件を最初からやり直す（記録を消す）</button>' +
+    }
+    h += '<button class="btn red" data-act="reset">この事件の全員の記録を消す</button>' +
       '<button class="btn red" data-act="newcase">捜査コードを作り直す（タグの書き直し・紙の印刷し直しが必要）</button>' +
       '<button class="btn red" data-act="case-del">この事件を事件ファイルから消す</button></div>';
 
-    h += '<div class="panel"><h3>⑧ 合言葉</h3><button class="btn sm" data-act="pin-change">準備画面の合言葉を変える</button></div>';
+    h += agentsPanelHtml();
+    h += '<div class="panel"><h3>⑨ 合言葉</h3><button class="btn sm" data-act="pin-change">準備画面の合言葉を変える</button></div>';
     h += '<button class="btn" data-act="title">おわる（事件ファイルへ）</button></div>';
     $app.innerHTML = frame('', h, { noDock: true });
+  }
+  // この端末の探偵（準備画面）：子どもの合言葉を忘れたとき消す・探偵ごと消す
+  function agentsPanelHtml() {
+    var h = '<div class="panel"><h3>⑧ この端末の探偵</h3><p class="small">同じ端末で遊ぶ子どもは、タイトルで自分の名前を押して入ります（絵の合言葉をつけた子は🔒）。記録は事件×探偵ごとに別々です。</p>';
+    if (!AGENTS.length) return h + '<p class="small">まだいません。</p></div>';
+    h += '<table>' + AGENTS.map(function (a) {
+      var done = CASES.filter(function (c) { var st = lsGet(stateKey(c.id, a.id)); return st && st.seed === c.setup.seed && st.stepId === 'done'; }).length;
+      return '<tr><td>' + agentLabel(a) + (a.pass ? ' 🔒' : '') + '<br><span class="small">解決 ' + done + ' 件</span></td><td>' +
+        (a.pass ? '<button class="btn sm" data-act="agent-unpass" data-agent="' + a.id + '">合言葉を消す</button>' : '') +
+        '<button class="btn sm red" data-act="agent-del" data-agent="' + a.id + '">消す</button></td></tr>';
+    }).join('') + '</table></div>';
+    return h;
   }
   // 事件ファイル（準備画面のいちばん上）：どの事件を準備するか選ぶ・新しく作る
   function caseFileHtml() {
     var h = '<div class="panel"><h3>📁 事件ファイル</h3><p class="small">事件ごとに、隠し場所・捜査コード・進み具合が別々に残ります。子どもはタイトルの一覧から選んで遊びます。</p><table>';
     CASES.forEach(function (c, i) {
-      var st = caseState(c);
-      var stat = !c.setup.ready ? '準備まだ' : !st ? '未着手' : st.stepId === 'done' ? '解決ずみ' : '捜査中';
+      var sts = caseStates(c).filter(function (r) { return r.st; });
+      var nDone = sts.filter(function (r) { return r.st.stepId === 'done'; }).length;
+      var stat = !c.setup.ready ? '準備まだ' : !sts.length ? '未着手' : '解決 ' + nDone + '人・捜査中 ' + (sts.length - nDone) + '人';
       var on = kase && c.id === kase.id;
       h += '<tr' + (on ? ' style="background:rgba(63,240,255,.08)"' : '') + '><td>CASE ' + ('0' + (i + 1)).slice(-2) + '</td><td>' + esc(caseName(c)) +
         '<br><span class="small">' + esc(NL.plainText((STORIES[c.story] || {}).title || c.story)) + '・' + stat + '</span></td><td>' +
@@ -1183,6 +1302,8 @@
     var el;
     if ((el = t.closest('[data-k]'))) { kanaKey(el.getAttribute('data-k')); return; }
     if ((el = t.closest('[data-kf]'))) { kanaKey(null, el.getAttribute('data-kf')); return; }
+    if ((el = t.closest('[data-ps]'))) { passKey(+el.getAttribute('data-ps')); return; }
+    if ((el = t.closest('[data-psf]'))) { passKey(null, el.getAttribute('data-psf')); return; }
     if ((el = t.closest('[data-n]'))) { numKey(el.getAttribute('data-n')); return; }
     if ((el = t.closest('[data-nf]'))) { numKey(null, el.getAttribute('data-nf')); return; }
     if ((el = t.closest('[data-dial]'))) { turnDial(+el.getAttribute('data-dial'), +el.getAttribute('data-d')); return; }
@@ -1201,20 +1322,39 @@
   function act_(act, el) {
     switch (act) {
       case 'title': closeLayer(); V = {}; route = 'title'; if (location.hash) history.replaceState(null, '', location.pathname); render(); window.scrollTo(0, 0); break;
-      case 'case-start': selectCase(el.getAttribute('data-case')); V = { name: pref.lastName || '' }; route = 'name'; render(); break;
+      case 'case-start':
+        if (!ME) { route = 'title'; render(); return; }
+        selectCase(el.getAttribute('data-case')); audio(); newGame(ME.name); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
+      case 'agent-pick': {
+        var ag = agentById(el.getAttribute('data-agent'));
+        if (!ag) return;
+        if (ag.pass) { V = { agent: ag.id, pass: [] }; route = 'pass'; render(); window.scrollTo(0, 0); }
+        else { sfx('ok'); login(ag); V = {}; route = 'title'; render(); window.scrollTo(0, 0); }
+        break;
+      }
+      case 'agent-new': V = { name: '', pass: [] }; route = 'name'; render(); window.scrollTo(0, 0); break;
+      case 'agent-icon': {
+        V.name = (document.getElementById('nm') || {}).value || V.name;
+        V.icon = el.getAttribute('data-icon');
+        Array.prototype.forEach.call(document.querySelectorAll('.avbtn'), function (b) { b.classList.toggle('on', b === el); });
+        sfx('key'); break;
+      }
+      case 'logout': login(null); V = {}; route = 'title'; render(); window.scrollTo(0, 0); break;
       case 'case-cont': audio(); selectCase(el.getAttribute('data-case')); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
       case 'case-cert': selectCase(el.getAttribute('data-case')); route = 'cert'; render(); window.scrollTo(0, 0); break;
       case 'case-replay':
         selectCase(el.getAttribute('data-case'));
         if (confirm('はじめから 遊びますか？（この 事件の にんていしょうは 消えます）')) {
-          V = { name: (state && state.name) || pref.lastName || '' }; route = 'name'; state = null; lsDel(stateKey(kase.id)); render();
+          state = null; lsDel(stateKey(kase.id)); audio(); newGame(ME.name); route = 'play'; V = {}; render(); window.scrollTo(0, 0);
         }
         break;
       case 'name-ok': {
-        var nm = (document.getElementById('nm').value || '').trim();
+        var nm = (document.getElementById('nm').value || '').trim().slice(0, 12);
         if (!nm) { toast('名前を 入れてね'); return; }
-        pref.lastName = nm.slice(0, 12); lsSet(K_PREF, pref);
-        audio(); newGame(nm.slice(0, 12)); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
+        if (agentByName(nm)) { sfx('ng'); toast(NL.rubyHtml('その 名前の [探偵|たんてい]は もう いるよ。上の 一覧から えらんでね'), 3500); return; }
+        if (V.pass && V.pass.length && V.pass.length < 3) { sfx('ng'); toast('合言葉の えは 3つ おしてね（つけないなら「けす」）', 3500); return; }
+        sfx('ok'); login(addAgent(nm, V.icon, (V.pass || []).join(',')));
+        V = {}; route = 'title'; render(); window.scrollTo(0, 0); break;
       }
       case 'titlecard-ok': state.titles[cur().ch.id] = true; save(); render(); break;
       case 'dlg-next': dlgNext(); break;
@@ -1282,11 +1422,30 @@
         save(); toast('移りました'); render(); break;
       }
       case 'reset':
-        if (confirm('「' + caseName(kase) + '」の記録を消して、最初からにしますか？')) { state = null; lsDel(stateKey(kase.id)); toast('消しました'); render(); }
+        if (confirm('「' + caseName(kase) + '」の全員の記録を消して、最初からにしますか？')) { state = null; delCaseStates(kase.id); toast('消しました'); render(); }
         break;
+      case 'reset-agent': {
+        var ra = agentById(el.getAttribute('data-agent'));
+        if (!ra || !confirm('「' + caseName(kase) + '」の ' + ra.name + ' の記録を消しますか？（認定証も消えます）')) return;
+        lsDel(stateKey(kase.id, ra.id)); if (ME && ra.id === ME.id) state = null;
+        toast('消しました'); render(); break;
+      }
+      case 'agent-unpass': {
+        var ua = agentById(el.getAttribute('data-agent'));
+        if (!ua || !confirm(ua.name + ' の合言葉を消しますか？（名前を押すだけで入れるようになります）')) return;
+        ua.pass = ''; saveAgents(); toast('消しました'); render(); break;
+      }
+      case 'agent-del': {
+        var da = agentById(el.getAttribute('data-agent'));
+        if (!da || !confirm(da.name + ' を消しますか？ この探偵の記録と認定証は全部消えます。')) return;
+        CASES.forEach(function (c) { lsDel(stateKey(c.id, da.id)); });
+        AGENTS = AGENTS.filter(function (a) { return a.id !== da.id; }); saveAgents();
+        if (ME && ME.id === da.id) login(null);
+        toast('消しました'); render(); break;
+      }
       case 'newcase':
         if (confirm('捜査コードを作り直しますか？ タグのURLが変わるので、タグを書き直して紙も印刷し直す必要があります。この事件の記録も消えます。')) {
-          setup.seed = newSeed(); saveSetup(); V.draft = null; state = null; lsDel(stateKey(kase.id)); toast('作り直しました'); render();
+          delCaseStates(kase.id); setup.seed = newSeed(); saveSetup(); V.draft = null; state = null; toast('作り直しました'); render();
         }
         break;
       case 'pcase': selectCase(el.getAttribute('data-case')); V = {}; render(); window.scrollTo(0, 0); break;
@@ -1302,7 +1461,7 @@
         if (!confirm('「' + caseName(kase) + '」を事件ファイルから消しますか？ 記録と認定証も消えます。この事件のタグは使えなくなります。')) return;
         var gone = kase.id;
         CASES = CASES.filter(function (c) { return c.id !== gone; });
-        saveCases(); lsDel(stateKey(gone));
+        saveCases(); delCaseStates(gone);
         selectCase(CASES[0] && CASES[0].id); V = {}; toast('消しました'); render(); window.scrollTo(0, 0); break;
       }
       default: break;
@@ -1352,11 +1511,23 @@
   });
 
   // 別のページ（タグで開いた Safari のタブ）が進めたら、こちらも合わせる
+  // 別のタブで探偵が入れかわっていたら、こちらも合わせてタイトルへ（ほかの子の記録で進めない）
+  function syncMe() {
+    AGENTS = lsGet(K_AGENTS) || AGENTS;
+    var id = lsGet(K_ME), a = id ? agentById(id) : null;
+    if ((a && a.id) === (ME && ME.id)) return false;
+    ME = a; selectCase(kase && kase.id);
+    if (route !== 'parent' && route !== 'print') { closeLayer(); V = {}; route = 'title'; render(); }
+    return true;
+  }
   window.addEventListener('storage', function (e) {
-    if (kase && e.key === stateKey(kase.id) && reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
+    if (e.key === K_ME || e.key === K_AGENTS) { syncMe(); return; }
+    if (kase && ME && e.key === stateKey(kase.id) && reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
   });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible' && reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
+    if (document.visibilityState !== 'visible') return;
+    if (syncMe()) return;
+    if (reloadState() && route === 'play' && !$layer.innerHTML) { V = {}; render(); }
   });
 
   // ---------- はじめ ----------
@@ -1373,10 +1544,25 @@
     var c = { id: 'c' + (Number(v1.seed) >>> 0).toString(36), story: 'bluemoon', setup: su, createdAt: Date.now() };
     CASES = [c];
     var st1 = lsGet(K_V1_STATE);
-    if (st1 && st1.seed === v1.seed) { lsSet(stateKey(c.id), st1); if (st1.name && !pref.lastName) { pref.lastName = st1.name; lsSet(K_PREF, pref); } }
+    if (st1 && st1.seed === v1.seed) { lsSet(legacyKey(c.id), st1); if (st1.name && !pref.lastName) { pref.lastName = st1.name; lsSet(K_PREF, pref); } }
     lsSet(K_CUR, c.id);
     saveCases();
     return true;
+  }
+  // 探偵を作る前の記録（事件ごとに1つ）を、記録に残っている名前の探偵へ写す。
+  // ⚠ 前の置き場は消さない（もし何かあっても戻せるように）
+  function migrateAgents() {
+    AGENTS = [];
+    var me = null;
+    CASES.forEach(function (c) {
+      var st = lsGet(legacyKey(c.id));
+      if (!st || !st.name || st.seed !== c.setup.seed) return;
+      var a = agentByName(st.name) || addAgent(st.name, '🕵️', '');
+      if (!lsGet(stateKey(c.id, a.id))) lsSet(stateKey(c.id, a.id), st);
+      if (!me || sameName(st.name, pref.lastName)) me = a;
+    });
+    saveAgents();
+    if (me) lsSet(K_ME, me.id);
   }
   // タグの捜査コードから、どの事件のタグかを決める（いま選んでいる事件を先に見る）
   function caseForTag(tok) {
@@ -1397,6 +1583,9 @@
     }
     CASES = CASES.filter(function (c) { return c && c.setup && STORIES[c.story]; });
     CASES.forEach(function (c) { c.setup.modes = c.setup.modes || { tag: true, code: true, tap: false }; });
+    AGENTS = lsGet(K_AGENTS);
+    if (!Array.isArray(AGENTS)) migrateAgents();
+    ME = agentById(lsGet(K_ME));
     selectCase(lsGet(K_CUR));
 
     var url = new URL(location.href);

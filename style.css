@@ -387,3 +387,27 @@ h3 { font-size: 17px; color: var(--gold); }
 .cs.go { background: #04303d; color: var(--cyan); border: 1px solid var(--cyan2); }
 .cs.done { background: #3a2a06; color: var(--gold); border: 1px solid #8a6a1a; }
 .cs.wait { background: #222; color: var(--muted); border: 1px solid var(--line); }
+
+/* ---------- 探偵（だれが あそぶ？） ---------- */
+.agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 6px 0 4px; }
+.agentcard {
+  display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 14px; cursor: pointer; text-align: left;
+  border: 1px solid var(--cyan2); background: var(--panel2); color: #fff; font-size: 18px; font-family: var(--sans); min-width: 0;
+}
+.agentcard:active { background: var(--cyan2); color: #000; }
+.agentcard .av { font-size: 32px; line-height: 1; }
+.agentcard .an { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agentcard .lk { font-size: 14px; }
+.agentcard.add { border-style: dashed; color: var(--cyan); grid-column: 1 / -1; justify-content: center; }
+.agentbar { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 8px 12px; border-radius: 14px; border: 1px solid var(--cyan2); background: rgba(63, 240, 255, .06); text-align: left; }
+.agentbar .av { font-size: 30px; line-height: 1; }
+.agentbar .an { flex: 1; min-width: 0; font-size: 18px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agentbar .btn { width: auto; flex: 0 0 auto; margin: 0; }
+.lbl { margin: 18px 0 6px; color: var(--cyan); font-size: 16px; }
+.avs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.avbtn { height: 50px; font-size: 28px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel2); cursor: pointer; padding: 0; }
+.avbtn.on { border-color: var(--gold); box-shadow: 0 0 10px rgba(255, 207, 74, .6); }
+.pp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 300px; margin: 0 auto; }
+.pp button { height: 64px; font-size: 34px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; touch-action: manipulation; padding: 0; }
+.pp button:active { background: var(--cyan2); }
+#passbox .kb-fn { max-width: 300px; margin: 8px auto 4px; }
