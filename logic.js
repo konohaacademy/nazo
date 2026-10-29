@@ -359,6 +359,211 @@
     return { idx: idx, code: String(code) };
   }
 
+
+  // ---------- 忍者やしき：3だんの関門（天びん → うそつき → ずらし文字）・まほうじん・からくり錠 ----------
+  // どれも seed から決まる（開きなおしても同じ）。答えは かならず1つに決まる（tests/logic.js が全部たしかめる）
+  var KANA46 = GOJUON.join('').replace(/ /g, '').split('');   // あ〜ん（を を ふくむ 46字）
+  function withMark(base, mark) {
+    if (!mark) return base;
+    var src = mark === 'daku' ? DAKU_OF : mark === 'han' ? HAN_OF : SMALL;
+    for (var k in src) if (src[k] === base) return k;
+    return null;
+  }
+  // 一の関門：天びん。● を 1つの おもりとして、■ が ● なんこ分かを 答える（答え＝ずらす数 3〜5）
+  function rep(x, n) { var a = []; for (var i = 0; i < n; i++) a.push(x); return a; }
+  function balancePuzzle(seed) {
+    var r = rng(((Number(seed) >>> 0) ^ 0xBA1A) + 3);
+    var tpl = Math.floor(r() * 3), a = 2 + Math.floor(r() * 2), b = 1 + Math.floor(r() * 2), eqs, n;
+    if (tpl === 0) { n = a + b; eqs = [{ L: ['t'], R: rep('c', a) }, { L: ['s'], R: ['t'].concat(rep('c', b)) }]; }
+    else if (tpl === 1) { n = a + b; eqs = [{ L: ['t', 't'], R: rep('c', a * 2) }, { L: ['s'], R: ['t'].concat(rep('c', b)) }]; }
+    else { n = 2 * a - 1; eqs = [{ L: ['t'], R: rep('c', a) }, { L: ['s', 'c'], R: ['t', 't'] }]; }
+    return { ok: true, tpl: tpl, eqs: eqs, answer: n, tri: a };
+  }
+  // おもさ（● を 1）で 天びんが つりあうか（テスト用）
+  function balanceWeight(eqs, n, tri) {
+    var w = { c: 1, t: tri, s: n };
+    return eqs.every(function (e) {
+      var sum = function (side) { return side.reduce(function (x, k) { return x + w[k]; }, 0); };
+      return sum(e.L) === sum(e.R);
+    });
+  }
+  // 二の関門：3人の 使い。ほんものは 1人で ほんとうの ことを、にせものは うそを 言う
+  var MESSENGERS = [{ id: 'momiji', name: 'もみじ', icon: '🍁' }, { id: 'sakura', name: 'さくら', icon: '🌸' }, { id: 'himawari', name: 'ひまわり', icon: '🌻' }];
+  function liarTruth(s, real) { return (s.x === real) === s.pol; }
+  function liarSolutions(ss) {
+    var out = [];
+    for (var c = 0; c < 3; c++) if (ss.every(function (s, i) { return liarTruth(s, c) === (i === c); })) out.push(c);
+    return out;
+  }
+  function liarText(s, i) {
+    if (s.x === i) return s.pol ? 'わたしが ほんものの 使いだよ' : 'わたしは にせものだよ';
+    return MESSENGERS[s.x].name + (s.pol ? 'が ほんものの 使いだよ' : 'は にせものだよ');
+  }
+  function liarPuzzle(seed) {
+    var r = rng(((Number(seed) >>> 0) ^ 0x11A2) + 7);
+    var real = Math.floor(r() * 3), opts = [], good = [];
+    for (var x = 0; x < 3; x++) { opts.push({ x: x, pol: true }); opts.push({ x: x, pol: false }); }
+    opts.forEach(function (a) { opts.forEach(function (b) { opts.forEach(function (c) {
+      var ss = [a, b, c];
+      var self = ss.filter(function (s, i) { return s.x === i; }).length;
+      if (self > 1) return;                      // 「わたしが ほんもの」ばかりだと つまらない
+      if (a.x === b.x && a.pol === b.pol || a.x === c.x && a.pol === c.pol || b.x === c.x && b.pol === c.pol) return;   // 同じ ことを 2人が 言わない
+      var sol = liarSolutions(ss);
+      if (sol.length === 1 && sol[0] === real) good.push(ss);
+    }); }); });
+    if (!good.length) return { ok: false, reason: 'うそつきの 問題が 作れません' };
+    var ss = good[Math.floor(r() * good.length)];
+    // ヒント2：ちがう人を1人ためして、どこで おかしく なるかを 言う
+    var wrong = [0, 1, 2].filter(function (c) { return c !== real; })[Math.floor(r() * 2)];
+    var j = 0;
+    for (var k = 0; k < 3; k++) if (liarTruth(ss[k], wrong) !== (k === wrong)) { j = k; break; }
+    var why = j === wrong
+      ? MESSENGERS[wrong].name + 'の ことばが うそに なってしまう'
+      : 'にせものの ' + MESSENGERS[j].name + 'が ほんとうの ことを 言っている ことに なってしまう';
+    return {
+      ok: true, real: real, says: ss.map(function (s, i) { return { x: s.x, pol: s.pol, text: liarText(s, i) }; }),
+      hint: 'ためしに ' + MESSENGERS[wrong].name + 'が ほんものだと すると、' + why + '。だから ' + MESSENGERS[wrong].name + 'は ちがう'
+    };
+  }
+  // 三の関門：ずらし文字。字を あいうえお表の じゅんで n 字 うしろへ ずらして 書く（゛゜小は しるしで のこす）
+  function shiftCells(ks, n) {
+    var out = [];
+    for (var i = 0; i < ks.length; i++) {
+      var b = baseKana(ks[i]), at = KANA46.indexOf(b);
+      if (at < 0) return null;
+      out.push({ k: KANA46[(at + n) % 46], m: markOf(ks[i]) });
+    }
+    return out;
+  }
+  function readShift(cells, n) {
+    return cells.map(function (c) { return withMark(KANA46[(KANA46.indexOf(c.k) - n + 46 * 2) % 46], c.m) || '?'; }).join('');
+  }
+  var DECOYS = ['たんす', 'まくら', 'かびん', 'ふとん', 'とだな', 'くつばこ', 'まど', 'かがみ', 'つくえ', 'げんかん', 'ほんだな', 'れいぞうこ',
+    'おしいれ', 'いす', 'てれび', 'ごみばこ', 'かさたて', 'ぴあの', 'たたみ', 'こたつ', 'せんたくき', 'ふろば', 'ろうか', 'かいだん', 'ぬいぐるみ', 'まくらもと'];
+  function chainPuzzle(yomi, seed, avoid) {
+    var ks = kanaList(yomi);
+    if (!ks.length) return { ok: false, reason: '読みが空です' };
+    var bal = balancePuzzle(seed), n = bal.answer;
+    var liar = liarPuzzle(seed);
+    if (!liar.ok) return liar;
+    var cells = shiftCells(ks, n);
+    if (!cells) return { ok: false, reason: '読みに あいうえお表に ない字が あります' };
+    var r = rng(((Number(seed) >>> 0) ^ 0x5F17) + 11);
+    var ng = [looseKana(yomi)].concat((avoid || []).map(looseKana));
+    var pool = shuffle(DECOYS.filter(function (w) { return ng.indexOf(looseKana(w)) < 0; }), r);
+    pool.sort(function (a, b) { return Math.abs(kanaList(a).length - ks.length) - Math.abs(kanaList(b).length - ks.length); });
+    var decoys = pool.slice(0, 2);
+    var scrolls = [], d = 0;
+    for (var i = 0; i < 3; i++) scrolls.push(i === liar.real ? cells : shiftCells(kanaList(decoys[d++]), n));
+    return { ok: true, answer: ks.join(''), n: n, balance: bal, liar: liar, scrolls: scrolls, decoys: decoys };
+  }
+  // からくり箱：まほうじん（たて・よこ・ななめ どれも 15。1〜9 を 1回ずつ）。★の 数を 答える
+  var MG_LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+  var MG_LINE_NAME = ['上の よこの 列', 'まん中の よこの 列', '下の よこの 列', '左の たての 列', 'まん中の たての 列', '右の たての 列', '左上から 右下への ななめ', '右上から 左下への ななめ'];
+  var MG_SQUARES = (function () {
+    var b = [2, 7, 6, 9, 5, 1, 4, 3, 8], out = [];
+    var rot = function (q) { return [q[6], q[3], q[0], q[7], q[4], q[1], q[8], q[5], q[2]]; };
+    var flip = function (q) { return [q[2], q[1], q[0], q[5], q[4], q[3], q[8], q[7], q[6]]; };
+    for (var i = 0; i < 4; i++) { out.push(b); out.push(flip(b)); b = rot(b); }
+    return out;
+  })();
+  // わかっている ます目から、2つ わかった 列の のこりを 1回ずつ うめていく。★が わかる 回を かえす（わからなければ -1）
+  function mgSolveRound(shown, star) {
+    var known = shown.slice(), round = 0;
+    while (round < 9) {
+      if (known.indexOf(star) >= 0) return round;
+      round++;
+      var add = [];
+      MG_LINES.forEach(function (l) {
+        var k = l.filter(function (c) { return known.indexOf(c) >= 0; });
+        if (k.length === 2) l.forEach(function (c) { if (known.indexOf(c) < 0 && add.indexOf(c) < 0) add.push(c); });
+      });
+      if (!add.length) return -1;
+      known = known.concat(add);
+    }
+    return -1;
+  }
+  function magicPuzzle(seed) {
+    var r = rng(((Number(seed) >>> 0) ^ 0x3A61) + 5);
+    var sq = MG_SQUARES[Math.floor(r() * 8)];
+    for (var t = 0; t < 400; t++) {
+      var star = [0, 1, 2, 3, 5, 6, 7, 8][Math.floor(r() * 8)];
+      var others = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8].filter(function (c) { return c !== star; }), r);
+      var shown = others.slice(0, t < 200 ? 3 : 4);
+      if (mgSolveRound(shown, star) >= 2) {
+        // ヒント2：さいしょに うめられる 列
+        var hint = '';
+        for (var i = 0; i < MG_LINES.length && !hint; i++) {
+          var l = MG_LINES[i], k = l.filter(function (c) { return shown.indexOf(c) >= 0; });
+          if (k.length === 2) {
+            var v = k.map(function (c) { return sq[c]; });
+            hint = MG_LINE_NAME[i] + 'は ' + v[0] + 'と ' + v[1] + '。15−' + v[0] + '−' + v[1] + '＝' + (15 - v[0] - v[1]) + ' で、のこりの ます目は ' + (15 - v[0] - v[1]);
+          }
+        }
+        return { ok: true, square: sq, star: star, shown: shown.slice().sort(), answer: sq[star], hint: hint };
+      }
+    }
+    return { ok: false, reason: 'まほうじんが 作れません' };
+  }
+  // からくり錠：4つの 絵（月・火・水・葉）を 左から ならべる。切れはしの 3つの 文で 1とおりに きまる
+  var LOCK_ITEMS = [{ id: 'tsuki', e: '🌙', n: '月' }, { id: 'hi', e: '🔥', n: '火' }, { id: 'mizu', e: '💧', n: '水' }, { id: 'ha', e: '🍃', n: '葉' }];
+  function lockName(i) { return '「' + LOCK_ITEMS[i].n + LOCK_ITEMS[i].e + '」'; }
+  function lockClueTrue(c, pos) {
+    switch (c.t) {
+      case 'L': return pos[c.x] === 0;
+      case 'R': return pos[c.x] === 3;
+      case 'next': return pos[c.y] === pos[c.x] + 1;
+      case 'adj': return Math.abs(pos[c.x] - pos[c.y]) === 1;
+      case 'nadj': return Math.abs(pos[c.x] - pos[c.y]) !== 1;
+      case 'left': return pos[c.x] < pos[c.y];
+      case 'mid': return pos[c.x] === 1 || pos[c.x] === 2;
+    }
+    return false;
+  }
+  function lockClueText(c) {
+    switch (c.t) {
+      case 'L': return lockName(c.x) + 'は いちばん 左';
+      case 'R': return lockName(c.x) + 'は いちばん 右';
+      case 'next': return lockName(c.x) + 'の すぐ 右どなりに ' + lockName(c.y);
+      case 'adj': return lockName(c.x) + 'と ' + lockName(c.y) + 'は となりどうし';
+      case 'nadj': return lockName(c.x) + 'と ' + lockName(c.y) + 'は となりどうしでは ない';
+      case 'left': return lockName(c.x) + 'は ' + lockName(c.y) + 'より 左の ほう';
+      case 'mid': return lockName(c.x) + 'は はしっこでは ない';
+    }
+    return '';
+  }
+  function perms4() {
+    var out = [];
+    (function go(a, rest) {
+      if (!rest.length) { out.push(a); return; }
+      rest.forEach(function (x, i) { go(a.concat([x]), rest.slice(0, i).concat(rest.slice(i + 1))); });
+    })([], [0, 1, 2, 3]);
+    return out;
+  }
+  function posOf(p) { var pos = []; p.forEach(function (x, i) { pos[x] = i; }); return pos; }
+  function lockSolutions(clues) {
+    return perms4().filter(function (p) { var pos = posOf(p); return clues.every(function (c) { return lockClueTrue(c, pos); }); });
+  }
+  function orderPuzzle(seed) {
+    var r = rng(((Number(seed) >>> 0) ^ 0x70C4) + 9);
+    var all = perms4(), ans = all[Math.floor(r() * all.length)], pos = posOf(ans);
+    var cand = [];
+    for (var x = 0; x < 4; x++) {
+      ['L', 'R', 'mid'].forEach(function (t) { cand.push({ t: t, x: x }); });
+      for (var y = 0; y < 4; y++) if (x !== y) ['next', 'left', 'adj', 'nadj'].forEach(function (t) { if (t === 'next' || t === 'left' || x < y) cand.push({ t: t, x: x, y: y }); });
+    }
+    cand = shuffle(cand.filter(function (c) { return lockClueTrue(c, pos); }), r);
+    for (var i = 0; i < cand.length; i++) for (var j = i + 1; j < cand.length; j++) for (var k = j + 1; k < cand.length; k++) {
+      var cs = [cand[i], cand[j], cand[k]];
+      var edge = cs.filter(function (c) { return c.t === 'L' || c.t === 'R'; }).length;
+      if (edge > 1) continue;                       // はしの 文ばかりだと すぐ わかる
+      if (lockSolutions(cs).length === 1) {
+        return { ok: true, answer: ans, clues: cs.map(function (c) { return { t: c.t, x: c.x, y: c.y, text: lockClueText(c) }; }), items: LOCK_ITEMS };
+      }
+    }
+    return { ok: false, reason: 'からくり錠が 作れません' };
+  }
+
   // ---------- 金庫 ----------
   function safeCode(setup) {
     var d1 = kanaList(setup.places[0].yomi).length;
@@ -391,6 +596,9 @@
           if (!lp.ok) errs.push(lab + '（文字ひろい）：読みの「' + (lp.missing || []).join('・') + '」を使う言葉が手持ちにありません。暗号の種類か場所を変えてください');
         } else if (kind === 'clock') {
           if (!clockPuzzle(y, setup.seed).ok) errs.push(lab + '：時計の暗号が作れません。暗号の種類を変えてください');
+        } else if (kind === 'shift') {
+          var ch = chainPuzzle(y, setup.seed, [p[1 - x[1]].yomi]);
+          if (!ch.ok) errs.push(lab + '（ずらし文字）：' + ch.reason);
         } else if (kind === 'image') {
           var c = cards[x[1] ? 'p2' : 'p1'] || {};
           if (!c.img) errs.push(lab + '：画像のURLか写真を入れてください');
@@ -433,6 +641,7 @@
     toHira: toHira, normKana: normKana, looseKana: looseKana, sameAnswer: sameAnswer,
     kanaList: kanaList, isHiraOnly: isHiraOnly, rng: rng, shuffle: shuffle,
     WORDS: WORDS, letterPuzzle: letterPuzzle, CARD_KINDS: CARD_KINDS, cardPuzzle: cardPuzzle, walkArrow: walkArrow, readAlien: readAlien, ALIEN_KANA: ALIEN_KANA, ALIEN_GLYPHS: ALIEN_GLYPHS, alienIndex: alienIndex, baseKana: baseKana, markOf: markOf, readGojuon: readGojuon, gojuonPos: gojuonPos, clockPuzzle: clockPuzzle, makeExpr: makeExpr, evalExpr: evalExpr,
+    KANA46: KANA46, balancePuzzle: balancePuzzle, balanceWeight: balanceWeight, MESSENGERS: MESSENGERS, liarPuzzle: liarPuzzle, liarSolutions: liarSolutions, chainPuzzle: chainPuzzle, readShift: readShift, magicPuzzle: magicPuzzle, MG_LINES: MG_LINES, MG_SQUARES: MG_SQUARES, LOCK_ITEMS: LOCK_ITEMS, orderPuzzle: orderPuzzle, lockSolutions: lockSolutions,
     sceneCode: sceneCode, encodeTag: encodeTag, decodeTag: decodeTag, safeCode: safeCode,
     checkSetup: checkSetup, fill: fill, esc: esc, rubyHtml: rubyHtml, speechText: speechText, plainText: plainText
   };

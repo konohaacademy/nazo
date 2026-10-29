@@ -9,7 +9,8 @@
   // カードの見た目（物語ごと）。parchment＝羊皮紙（ブルームーン）・space＝宇宙（ピコ）
   var THEMES = {
     parchment: { ink: INK, sign: 'かいとう クロウ', mark: 'mask' },
-    space: { ink: '#e9f6ff', sign: 'キラリ星の ピコ', mark: 'star' }
+    space: { ink: '#e9f6ff', sign: 'キラリ星の ピコ', mark: 'star' },
+    washi: { ink: INK, sign: 'にんじゃねこ くろまる', mark: 'mask' }
   };
   var TH = THEMES.parchment;
 

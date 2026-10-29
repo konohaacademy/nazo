@@ -480,3 +480,74 @@ h3 { font-size: 17px; color: var(--gold); }
 .cert.space .st b { color: #2a3fb8; }
 .padbtns svg, .padscr svg, .decgrid svg { pointer-events: none; }
 .cert.space .seal { font-size: 11px; width: 76px; height: 76px; }
+
+/* もどる（ふりかえり） */
+.dock button.dim { opacity: .35; }
+.rvbar { display: flex; justify-content: space-between; align-items: center; font-family: var(--dot); color: var(--gold); border: 1px dashed #8a6a1a; background: rgba(255, 207, 74, .07); border-radius: 12px; padding: 8px 12px; margin-bottom: 12px; font-size: 16px; }
+.rvbar span { font-size: 13px; color: var(--muted); }
+.talk.rv { margin: 8px 0; }
+.rvans { margin: 12px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid #2f8f66; background: rgba(72, 255, 155, .07); color: #c9ffe0; font-size: 18px; }
+.rvans b { color: #fff; font-size: 20px; letter-spacing: .06em; }
+.rvcards { margin: 8px 0; }
+.rvnav { margin-top: 10px; }
+
+/* 忍者やしき：天びん */
+.scales { display: grid; gap: 8px; margin: 10px 0; }
+.scale { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px; }
+.scale b { font-family: var(--dot); color: var(--gold); font-size: 18px; }
+.scale .scl { width: 100%; max-width: 320px; height: auto; margin: 0 auto; display: block; }
+.q-ask { text-align: center; font-size: 28px; letter-spacing: .08em; }
+.q-ask b { color: var(--gold); }
+/* うそつき */
+.liars { display: grid; gap: 8px; margin: 10px 0; }
+.liar { display: grid; grid-template-columns: 52px 1fr; grid-template-rows: auto auto; align-items: center; gap: 0 10px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; font: inherit; }
+.liar .li { grid-row: 1 / 3; font-size: 40px; text-align: center; }
+.liar .ln { font-family: var(--dot); color: var(--cyan); font-size: 15px; }
+.liar .ls { font-size: 18px; line-height: 1.5; }
+.liar.on { border-color: var(--gold); box-shadow: 0 0 14px rgba(255, 207, 74, .45); background: rgba(255, 207, 74, .08); }
+.liar:disabled { cursor: default; }
+.liar * { pointer-events: none; }
+/* ずらし文字の 巻物 */
+.scrolls { display: grid; gap: 8px; margin: 10px 0; }
+.scroll { border-radius: 10px; background: linear-gradient(90deg, #8a1a1a 0 8px, var(--paper) 8px calc(100% - 8px), #8a1a1a calc(100% - 8px)); color: var(--ink); padding: 8px 18px; }
+.scroll .sw { font-size: 14px; color: #6b4a22; }
+.scroll .sb { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.sk { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 44px; font-size: 28px; font-weight: 900; background: #fffaf0; border: 1px solid #c9b48a; border-radius: 6px; }
+.sk .sm { position: absolute; top: -8px; right: -8px; min-width: 24px; height: 24px; border-radius: 12px; background: #8a1a1a; color: #fff; font-size: 13px; font-style: normal; line-height: 24px; text-align: center; padding: 0 3px; display: flex; align-items: center; justify-content: center; }
+.sk .sm svg { width: 20px; height: 20px; }
+.korder { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 10px; }
+.korder .kg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.korder .kg i { font-style: normal; width: 26px; text-align: center; padding: 3px 0; background: var(--panel2); font-size: 17px; border-right: 1px solid var(--line); }
+.korder .kg i:last-child { border-right: 0; }
+.korder .kg.loop i { color: var(--gold); }
+.korder b { color: var(--muted); font-size: 12px; }
+/* まほうじん */
+.magic { display: grid; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(3, 72px); gap: 6px; justify-content: center; margin: 14px auto; padding: 10px; border-radius: 14px; background: #6b4a22; width: max-content; }
+.magic div { display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #f3e2b8; color: #2b2116; font-size: 34px; font-weight: 900; font-family: var(--dot); }
+.magic .blank { background: #d9c59a; }
+.magic .star { background: #ffcf4a; color: #8a1a1a; box-shadow: 0 0 12px rgba(255, 207, 74, .8); }
+/* 巻物の 切れはし */
+.maki { margin: 0 auto; border-radius: 6px; background: var(--paper); color: var(--ink); padding: 12px 14px; border-left: 8px solid #8a1a1a; transform: rotate(-1deg); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
+.maki .mk-h { font-size: 13px; color: #6b4a22; border-bottom: 1px dashed #8a7550; margin-bottom: 6px; }
+.maki .mk-t { font-size: 20px; line-height: 1.6; }
+.kuro-photo { background: #f1e6d0; }
+/* からくり錠 */
+.lkclues { margin: 10px 0 0; padding-left: 1.4em; font-size: 18px; line-height: 1.8; }
+.lock { margin: 12px 0; padding: 14px 12px 12px; border-radius: 20px; border: 3px solid #b3122e; background: linear-gradient(180deg, #2a1418, #120709); box-shadow: 0 0 22px rgba(179, 18, 46, .3) inset; }
+.lock .lbl { text-align: center; font-family: var(--dot); color: var(--gold); letter-spacing: .3em; font-size: 12px; }
+.lslots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 12px; }
+.lslots .ls { height: 78px; border-radius: 12px; border: 2px dashed #8a5a2b; background: #1a0d0f; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.lslots .ls small { font-size: 10px; color: var(--muted); }
+.lslots .ls b { font-size: 30px; line-height: 1.1; }
+.lslots .ls em, .lbtns em { font-style: normal; font-size: 13px; color: var(--gold); }
+.lslots .ls.cur { border-style: solid; border-color: var(--gold); animation: pulse 1s infinite; }
+.lbtns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.lbtns button { position: relative; height: 72px; border-radius: 50%; border: 2px solid var(--gold); background: radial-gradient(circle at 50% 35%, #4a2a20, #1a0d0f); cursor: pointer; touch-action: manipulation; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.lbtns button b { font-size: 28px; line-height: 1.1; }
+.lbtns button:disabled { opacity: .3; }
+.lbtns button.lit { box-shadow: 0 0 14px rgba(255, 211, 107, .8); }
+.lbtns button i { position: absolute; top: -4px; right: -2px; font-style: normal; font-family: var(--dot); color: #1a0d0f; background: var(--gold); border-radius: 9px; padding: 0 6px; font-size: 13px; }
+.lbtns button *, .lslots * { pointer-events: none; }
+.lock .padfn button { border-color: var(--gold); color: var(--gold); background: #1a0d0f; }
+.lock.ok { border-color: #48ff9b; box-shadow: 0 0 30px rgba(72, 255, 155, .6); }
+.lock.ok .lslots .ls { border-color: #48ff9b; border-style: solid; }

@@ -39,6 +39,7 @@
   },
   "cardTheme": "space",
   "hintWho": "pico",
+  "paperSign": "ピコの レーダー",
   "hintLines": {
     "idle": "いまは お話を よく 聞いてほしいピコ。",
     "first": "こまった？ ヒントを 1つずつ 出すピコ！",
@@ -76,6 +77,7 @@
     ],
     "sign": "ピコ",
     "placeB": "shard2",
+    "cardWord": "ピコの [通信|つうしん]カード",
     "placeWord": "ポイント"
   },
   "evidence": {

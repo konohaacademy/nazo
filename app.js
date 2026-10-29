@@ -28,6 +28,7 @@
   var setup = null, state = null, pref = { sound: true, autoSpeak: false, lastName: '' };
   var route = 'title';
   var V = {};            // いまの画面だけの一時的なもの
+  var RV = null;         // 「もどる」で 見返している step の番号（null＝いまの ところ）。V とは別に持つ（入れかけの答えを消さない）
   var tagView = null;    // タグから開いたときに出すもの
   var timers = [];
   var nfc = null;        // { ac: AbortController, step: stepId }
@@ -131,7 +132,11 @@
       sc: NL.safeCode(setup),
       // 暗号カード（その1＝場所1の読み・その2＝場所2の読み）。画像のカードは null
       c1: isGenCard(ck.p1) ? NL.cardPuzzle(ck.p1, setup.places[0].yomi, setup.seed, padWord()) : null,
-      c2: isGenCard(ck.p2) ? NL.cardPuzzle(ck.p2, setup.places[1].yomi, setup.seed + 1, padWord()) : null
+      c2: isGenCard(ck.p2) ? NL.cardPuzzle(ck.p2, setup.places[1].yomi, setup.seed + 1, padWord()) : null,
+      // 忍者やしき：3だんの関門（暗号その1が「ずらし文字」の物語だけ）・からくり箱・からくり錠
+      ch: ck.p1 === 'shift' ? NL.chainPuzzle(setup.places[0].yomi, setup.seed, [setup.places[1].yomi]) : null,
+      mg: NL.magicPuzzle(setup.seed),
+      lk: NL.orderPuzzle(setup.seed)
     };
     return PZ;
   }
@@ -178,8 +183,20 @@
     };
     if (P.lp.ok) { v.w1 = P.lp.items[0].word; v.p1 = P.lp.items[0].pos; v.k1 = P.lp.items[0].kana; }
     if (P.cp.ok) { v.e1 = P.cp.seq[0].expr; v.hr1 = P.cp.seq[0].hour; v.ck1 = P.cp.seq[0].kana; }
+    if (P.ch && P.ch.ok) {
+      var c0 = P.ch.scrolls[P.ch.liar.real][0];
+      v.bn = P.ch.n; v.real = NL.MESSENGERS[P.ch.liar.real].name; v.liarH = P.ch.liar.hint;
+      v.sc1 = c0.k + (MARK_WORD[c0.m] || ''); v.sd1 = NL.kanaList(p1.yomi)[0];
+    }
+    if (P.mg.ok) { v.mg = P.mg.answer; v.mgH = P.mg.hint; }
+    if (P.lk.ok) {
+      P.lk.clues.forEach(function (c, i) { v['lk' + (i + 1)] = c.text; });
+      v.lkAns = P.lk.answer.map(function (i) { return NL.LOCK_ITEMS[i].n + NL.LOCK_ITEMS[i].e; }).join(' → ');
+      v.lkL = NL.LOCK_ITEMS[P.lk.answer[0]].n + NL.LOCK_ITEMS[P.lk.answer[0]].e;
+    }
     return v;
   }
+  var MARK_WORD = { daku: '（゛つき）', han: '（゜つき）', small: '（小さい字）' };
   function T(s) { return NL.rubyHtml(NL.fill(s, vars())); }
   function Plain(s) { return NL.plainText(NL.fill(s, vars())); }
   function esc(s) { return NL.esc(s); }
@@ -213,7 +230,7 @@
       e.hints = hs.concat([st.hints[st.hints.length - 1]]);
     } else if (st.cardFor && ck[st.cardFor] && isCardKind(ck[st.cardFor])) {
       e = Object.assign({}, st);
-      ['lines', 'found', 'reward'].forEach(function (f) { if (st[f + '_card']) e[f] = st[f + '_card']; });
+      ['lines', 'found', 'reward', 'clear'].forEach(function (f) { if (st[f + '_card']) e[f] = st[f + '_card']; });
     }
     return e;
   }
@@ -228,6 +245,12 @@
     };
     save();
   }
+  // いまの 探偵の この事件を はじめから（記録を 消して 新しく はじめる）
+  function restartCase() {
+    if (!ME || !kase) return;
+    state = null; lsDel(stateKey(kase.id)); audio(); newGame(ME.name);
+    route = 'play'; V = {}; RV = null; render(); window.scrollTo(0, 0);
+  }
   function give(ids) {
     var got = [];
     (ids || []).forEach(function (id) {
@@ -240,7 +263,7 @@
     var nx = STEPS[i + 1];
     state.cleared[state.stepId] = true;
     state.stepId = nx ? nx.st.id : 'done';
-    V = {};
+    V = {}; RV = null;
     save();
     render();
     window.scrollTo(0, 0);
@@ -301,7 +324,7 @@
       u.lang = 'ja-JP';
       var v = jaVoice(); if (v) u.voice = v;
       u.rate = 0.95;
-      u.pitch = who === 'kaitou' ? 0.6 : who === 'hakase' ? 1.3 : who === 'pico' ? 1.7 : 1.05;
+      u.pitch = who === 'kaitou' ? 0.6 : who === 'hakase' ? 1.3 : who === 'pico' ? 1.7 : who === 'kuro' ? 1.2 : 1.05;
       window.speechSynthesis.speak(u);
     } catch (e) { /* 読み上げは無くても遊べる */ }
   }
@@ -336,7 +359,12 @@
     '<ellipse cx="16.5" cy="22" rx="5" ry="6" fill="#fff"/><ellipse cx="29.5" cy="22" rx="5" ry="6" fill="#fff"/><circle cx="17.5" cy="23" r="3" fill="#1b1f4a"/><circle cx="28.5" cy="23" r="3" fill="#1b1f4a"/>' +
     '<circle cx="18.5" cy="21.5" r="1" fill="#fff"/><circle cx="29.5" cy="21.5" r="1" fill="#fff"/><path d="M19 31 Q23 34 27 31" stroke="#1b1f4a" stroke-width="1.8" fill="none" stroke-linecap="round"/>' +
     '<ellipse cx="12" cy="29" rx="2.6" ry="1.6" fill="#ff9ec4"/><ellipse cx="34" cy="29" rx="2.6" ry="1.6" fill="#ff9ec4"/></svg>';
-  var WHO = { sys: 'D-PHONE', kaitou: '[怪盗|かいとう]クロウ', hakase: 'ネジマキ[博士|はかせ]', pico: 'ピコ' };
+  AV.kuro = '<svg viewBox="0 0 46 46"><path d="M9 20 L11 5 L20 14Z M37 20 L35 5 L26 14Z" fill="#23232e"/><path d="M12 15 L13 9 L17 13Z M34 15 L33 9 L29 13Z" fill="#ff9ec4"/>' +
+    '<ellipse cx="23" cy="26" rx="15" ry="13.5" fill="#23232e"/><rect x="7.5" y="16" width="31" height="6" rx="2" fill="#d8323f"/><path d="M38 18 L45 14 M38 20 L44 23" stroke="#d8323f" stroke-width="3" stroke-linecap="round"/>' +
+    '<circle cx="23" cy="19" r="2.2" fill="#ffd36b"/><ellipse cx="17" cy="27" rx="4" ry="4.4" fill="#ffd36b"/><ellipse cx="29" cy="27" rx="4" ry="4.4" fill="#ffd36b"/>' +
+    '<ellipse cx="17" cy="27" rx="1.3" ry="3.4" fill="#111"/><ellipse cx="29" cy="27" rx="1.3" ry="3.4" fill="#111"/><path d="M21.5 32 L24.5 32 L23 33.6Z" fill="#ff9ec4"/>' +
+    '<path d="M19 35 Q23 37.5 27 35" stroke="#888" stroke-width="1.2" fill="none"/><path d="M5 30 L13 31 M5 34 L13 33 M41 30 L33 31 M41 34 L33 33" stroke="#999" stroke-width="1"/></svg>';
+  var WHO = { sys: 'D-PHONE', kaitou: '[怪盗|かいとう]クロウ', hakase: 'ネジマキ[博士|はかせ]', pico: 'ピコ', kuro: '[忍者|にんじゃ]ねこ くろまる' };
 
   function clockSvg(dial, w) {
     var s = '<svg class="art" viewBox="0 0 260 260" width="' + (w || 260) + '" height="' + (w || 260) + '">';
@@ -364,7 +392,7 @@
     var items = P.cp.ok ? P.cp.seq : [];
     var h = '<div class="paper" style="width:' + (w || 280) + 'px"><div class="stain">K</div><h4>なぞの 紙</h4><div class="calc">';
     items.forEach(function (it, i) { h += '<span><b>' + CIRC.charAt(i) + '</b>' + esc(it.expr) + '</span>'; });
-    h += '</div><div class="sign">―― ' + T('[怪盗|かいとう]') + 'クロウ</div></div>';
+    h += '</div><div class="sign">―― ' + NL.rubyHtml((SC && SC.paperSign) || '[怪盗|かいとう]クロウ') + '</div></div>';
     return h;
   }
   function memoHtml(w) {
@@ -422,6 +450,13 @@
       case 'shard2': return shardSvg('#ff9ad5', '#d43c8f', w);
       case 'badge': return '<svg viewBox="0 0 120 120" style="width:' + (w || 160) + 'px;height:auto"><circle cx="60" cy="60" r="52" fill="#2a3fb8" stroke="#ffd36b" stroke-width="6"/>' +
         '<polygon points="60,22 70,48 98,48 75,64 84,92 60,75 36,92 45,64 22,48 50,48" fill="#ffd36b"/><circle cx="60" cy="58" r="9" fill="#7dffb0"/></svg>';
+      case 'kuro': return '<div class="photo pico-photo kuro-photo" style="width:' + (w || 200) + 'px">' + AV.kuro.replace('<svg ', '<svg style="width:100%;height:auto" ') + '<div class="cap">NINJA CAT KUROMARU</div></div>';
+      case 'gate1': return '<div class="paper" style="width:' + (w || 240) + 'px;transform:rotate(-1deg)"><h4>' + T('一の[関門|かんもん]の 答え') + '</h4><div style="font-size:26px;text-align:center">■ ＝ ● × ' + esc(vars().bn) + '</div></div>';
+      case 'scrolls': return scrollsHtml(true);
+      case 'maki1': case 'maki2': case 'maki3': return makiHtml(+type.slice(-1), w);
+      case 'box': return boxSvg(w);
+      case 'kbox': return kboxSvg(w);
+      case 'menkyo': return menkyoSvg(w);
       case 'card1': return '<div class="cardwrap">' + cardHtml(0) + '</div>';
       case 'card2': return '<div class="cardwrap">' + cardHtml(1) + '</div>';
       default: return '';
@@ -435,6 +470,47 @@
       '<polygon points="60,6 96,46 82,128 38,128 24,46" fill="url(#' + id + ')" stroke="#fff" stroke-width="2"/>' +
       '<path d="M60 6 L52 50 L38 128 M52 50 L96 46 M52 50 L82 128" stroke="#fff" stroke-width="1.5" fill="none" opacity=".7"/>' +
       '<path d="M18 22 l3 8 l8 3 l-8 3 l-3 8 l-3 -8 l-8 -3 l8 -3z M102 96 l2 6 l6 2 l-6 2 l-2 6 l-2 -6 l-6 -2 l6 -2z" fill="#fff"/></svg>';
+  }
+  // ---------- 忍者やしきの 絵 ----------
+  // 巻物の 切れはし（からくり錠の 文が 1つずつ 書いてある）
+  function makiHtml(n, w) {
+    var t = (vars()['lk' + n]) || '';
+    return '<div class="maki" style="width:' + (w || 260) + 'px"><div class="mk-h">' + T('[巻物|まきもの]の 切れはし その' + n) + '</div><div class="mk-t">' + esc(t) + '</div></div>';
+  }
+  function boxSvg(w) {
+    var g = '';
+    for (var i = 0; i < 9; i++) g += '<rect x="' + (66 + (i % 3) * 30) + '" y="' + (28 + Math.floor(i / 3) * 16) + '" width="26" height="13" rx="2" fill="#f3e2b8" stroke="#6b4a22"/>';
+    return '<svg viewBox="0 0 220 150" style="width:' + (w || 200) + 'px;height:auto"><rect x="20" y="58" width="180" height="80" rx="6" fill="#8a5a2b" stroke="#4a2e12" stroke-width="3"/>' +
+      '<path d="M20 58 L40 20 L180 20 L200 58Z" fill="#a8703a" stroke="#4a2e12" stroke-width="3"/>' + g +
+      '<rect x="98" y="88" width="24" height="22" rx="3" fill="#ffcf4a" stroke="#6b4a22" stroke-width="2"/><circle cx="110" cy="97" r="4" fill="#4a2e12"/><rect x="108.5" y="97" width="3" height="8" fill="#4a2e12"/></svg>';
+  }
+  function kboxSvg(w) {
+    var it = NL.LOCK_ITEMS, b = '';
+    it.forEach(function (x, i) { b += '<circle cx="' + (52 + i * 38) + '" cy="96" r="15" fill="#2a1a10" stroke="#ffcf4a" stroke-width="2"/><text x="' + (52 + i * 38) + '" y="103" text-anchor="middle" font-size="18">' + x.e + '</text>'; });
+    return '<svg viewBox="0 0 220 150" style="width:' + (w || 200) + 'px;height:auto"><rect x="14" y="40" width="192" height="98" rx="10" fill="#1d1012" stroke="#b3122e" stroke-width="4"/>' +
+      '<rect x="24" y="22" width="172" height="26" rx="8" fill="#2a1418" stroke="#b3122e" stroke-width="3"/><path d="M60 35 h100" stroke="#ffcf4a" stroke-width="2" stroke-dasharray="6 4"/>' + b +
+      '<text x="110" y="70" text-anchor="middle" font-size="15" fill="#ffcf4a" font-family="DotGothic16, sans-serif">からくり じょう</text></svg>';
+  }
+  function menkyoSvg(w) {
+    return '<svg viewBox="0 0 240 150" style="width:' + (w || 220) + 'px;height:auto"><rect x="30" y="30" width="180" height="90" fill="#f7ecd2" stroke="#8a6a3a" stroke-width="2"/>' +
+      '<rect x="14" y="22" width="20" height="106" rx="8" fill="#b3122e"/><rect x="206" y="22" width="20" height="106" rx="8" fill="#b3122e"/>' +
+      '<text x="120" y="64" text-anchor="middle" font-size="18" fill="#2b1a08" font-family="Zen Maru Gothic, sans-serif" font-weight="900">ひみつの まきもの</text>' +
+      '<g transform="translate(120 92)"><path d="M0 -16 L4 -4 L16 0 L4 4 L0 16 L-4 4 L-16 0 L-4 -4Z" fill="#3a3a48"/><circle r="3" fill="#f7ecd2"/></g></svg>';
+  }
+  // 3まいの 巻物（ずらし文字）。show＝使いの 名前と いっしょに 出す
+  function shiftCellHtml(c) {
+    // ⚠ 「゛」「゜」の字は 小さく つぶれて 見えないので、線で 描く（cards.js の markBadge と同じ）
+    var mk = c.m === 'daku' ? '<svg viewBox="0 0 20 20"><path d="M7 4 L10 11 M12 3 L15 10" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>'
+      : c.m === 'han' ? '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="5" fill="none" stroke="#fff" stroke-width="2.4"/></svg>' : '小';
+    return '<span class="sk">' + esc(c.k) + (c.m ? '<i class="sm ' + c.m + '">' + mk + '</i>' : '') + '</span>';
+  }
+  function scrollsHtml() {
+    var ch = puz().ch;
+    if (!ch || !ch.ok) return '';
+    return '<div class="scrolls">' + ch.scrolls.map(function (cells, i) {
+      var m = NL.MESSENGERS[i];
+      return '<div class="scroll"><div class="sw">' + m.icon + ' ' + esc(m.name) + 'の ' + T('[巻物|まきもの]') + '</div><div class="sb">' + cells.map(shiftCellHtml).join('') + '</div></div>';
+    }).join('') + '</div>';
   }
   function evArt(id, w) {
     var e = SC.evidence[id];
@@ -457,6 +533,7 @@
     h += '<main class="scr" id="scr">' + body + '</main>';
     if (!opts.noDock) {
       h += '<nav class="dock"><div class="in">' +
+        '<button data-act="back"' + (canBack() ? '' : ' class="dim"') + '>◀<small>もどる</small></button>' +
         '<button data-act="inv">🎒<small>しょうこ</small>' + (newN ? '<span class="badge">' + newN + '</span>' : '') + '</button>' +
         '<button data-act="hint">💡<small>ヒント</small></button>' +
         '<button data-act="speak">🔊<small>よみあげ</small></button>' +
@@ -531,7 +608,8 @@
           '<button class="btn ghost" data-act="case-replay" data-case="' + c.id + '">もう一度</button></div>';
       } else if (st) {
         badge = '<span class="cs go">' + R('[捜査|そうさ]中') + '：' + esc(chapterOf(c, st) || 'プロローグ') + '</span>';
-        btns = '<button class="btn" data-act="case-cont" data-case="' + c.id + '">▶ つづきから</button>';
+        btns = '<div class="row"><button class="btn" data-act="case-cont" data-case="' + c.id + '">▶ つづきから</button>' +
+          '<button class="btn ghost" data-act="case-restart" data-case="' + c.id + '">↺ はじめから</button></div>';
       } else {
         badge = '<span class="cs new">NEW</span>';
         btns = '<button class="btn" data-act="case-start" data-case="' + c.id + '">▶ ' + R('この [事件|じけん]に いどむ！') + '</button>';
@@ -635,6 +713,7 @@
       return;
     }
     var st = c.st;
+    if (RV != null) { renderReview(); return; }
     if (V.dlg) { renderDialog(chHtml); return; }
     if (st.type === 'story') { startDialog(st.lines, function () { onRewards(give(st.reward)); advance(); }); renderDialog(chHtml); return; }
     if (st.type === 'ending') {
@@ -651,6 +730,62 @@
     }
     if (st.type === 'safe') { if (state.cleared['safe:open']) { advance(); return; } renderSafe(chHtml, st); return; }
     if (st.type === 'pad') { if (state.cleared[st.id + ':ok']) { advance(); return; } renderPad(chHtml, st); return; }
+    if (st.type === 'order') { if (state.cleared[st.id + ':ok']) { advance(); return; } renderOrder(chHtml, st); return; }
+  }
+
+  // ---------- もどる（すんだ ところを 見返す。進み具合は 変えない） ----------
+  function curIndex() { return state ? stepIndex(state.stepId) : -1; }
+  function canBack() { return !!(state && route === 'play' && (RV != null ? RV > 0 : curIndex() > 0)); }
+  function goBack() {
+    if (!canBack()) { toast(T('まだ もどれる ところが ないよ')); return; }
+    closeLayer();
+    RV = RV != null ? RV - 1 : curIndex() - 1;
+    sfx('key'); render(); window.scrollTo(0, 0);
+  }
+  function msgsHtml(lines) {
+    return '<div class="talk rv">' + (lines || []).map(function (l) {
+      return '<div class="msg ' + l.who + ' old" style="animation:none"><div class="av">' + (AV[l.who] || '') + '</div><div class="bub"><div class="who">' + NL.rubyHtml(WHO[l.who] || '') + '</div>' +
+        '<div class="tx">' + T(l.text) + '</div></div></div>';
+    }).join('') + '</div>';
+  }
+  function evThumbs(ids) {
+    ids = (ids || []).filter(function (id) { return SC.evidence[id]; });
+    if (!ids.length) return '';
+    return '<div class="cards rvcards">' + ids.map(function (id) {
+      return '<div class="card" data-ev="' + id + '"><div class="th">' + evArt(id) + '</div><div class="nm">' + T(SC.evidence[id].name) + '</div></div>';
+    }).join('') + '</div>';
+  }
+  // その step の 答え（ふりかえりで 見せる）
+  function answerText(st) {
+    if (st.type === 'puzzle') {
+      var a = answerOf(st);
+      if (st.input === 'choice') return NL.MESSENGERS[+a] ? NL.MESSENGERS[+a].icon + ' ' + NL.MESSENGERS[+a].name : a;
+      return st.input === 'num' ? a : '「' + a + '」';
+    }
+    if (st.type === 'safe') return puz().sc.code;
+    if (st.type === 'pad') return '「' + st.word + '」';
+    if (st.type === 'order') return vars().lkAns;
+    return '';
+  }
+  function renderReview() {
+    var ci = curIndex();
+    if (RV == null || RV < 0 || RV >= ci) { RV = null; render(); return; }
+    var e = STEPS[RV], st = e.st;
+    var h = '<div class="rvbar">📖 ' + T('ふりかえり') + '<span>' + (RV + 1) + ' / ' + ci + '</span></div>';
+    if (st.type === 'story' || st.type === 'ending') {
+      h += msgsHtml(st.lines) + evThumbs(st.reward);
+    } else if (st.type === 'scene') {
+      h += '<h2>' + T(st.title) + '</h2><p class="lead">' + T(st.lead) + '</p>' + msgsHtml(st.found) + evThumbs(st.reward);
+    } else {
+      h += '<div class="puzzle-head"><span class="tag">' + (st.type === 'puzzle' ? 'CODE' : 'FINAL') + '</span><h2 style="margin:0">' + T(st.title) + '</h2></div>' +
+        '<p class="lead">' + T(st.question) + '</p>' + (st.type === 'puzzle' ? puzzleVisual(st, true) : '') +
+        '<div class="rvans">✅ ' + T('答え') + '：<b>' + esc(answerText(st)) + '</b></div>' +
+        (st.type === 'puzzle' ? msgsHtml(st.clear) + evThumbs(st.reward) : '');
+    }
+    h += '<div class="row rvnav">' + (RV > 0 ? '<button class="btn ghost" data-act="rv-prev">◀ まえ</button>' : '<span></span>') +
+      (RV < ci - 1 ? '<button class="btn ghost" data-act="rv-next">つぎ ▶</button>' : '<span></span>') + '</div>' +
+      '<button class="btn" data-act="rv-exit">▶ ' + T('いまの ところに もどる') + '</button>';
+    $app.innerHTML = frame(NL.rubyHtml(NL.fill(e.ch.title, vars())), h);
   }
   function onRewards(ids) {
     (ids || []).forEach(function (id) {
@@ -723,14 +858,32 @@
     if (st.gen === 'letter') return P.lp.answer;
     if (st.gen === 'clock') return P.cp.answer;
     if (st.gen === 'card') return NL.normKana(setup.places[st.card].yomi);
+    if (st.gen === 'shift') return NL.normKana(setup.places[0].yomi);
+    if (st.gen === 'balance') return P.ch && P.ch.ok ? String(P.ch.n) : '';
+    if (st.gen === 'liar') return P.ch && P.ch.ok ? String(P.ch.liar.real) : '';
+    if (st.gen === 'magic') return P.mg.ok ? String(P.mg.answer) : '';
     return NL.normKana(st.answer || '');
   }
   function renderPuzzle(chHtml, st) {
-    var P = puz();
     var ans = answerOf(st);
     if (!V.input) V.input = [];
     var h = '<div class="puzzle-head"><span class="tag">CODE</span><h2 style="margin:0">' + T(st.title) + '</h2></div>' +
-      '<p class="lead">' + T(st.question) + '</p>';
+      '<p class="lead">' + T(st.question) + '</p>' + puzzleVisual(st, false);
+    if (st.input === 'choice') {
+      h += '<div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
+    } else {
+      h += '<div class="slots" id="slots"></div><div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
+      h += st.input === 'num' ? numPad('pn') : kanaKeyboard();
+    }
+    h += '<button class="btn gold" data-act="answer">🔍 こたえる</button>';
+    $app.innerHTML = frame(chHtml, h);
+    if (st.input !== 'choice') paintSlots(ans.length);
+    var tb = document.getElementById('tblbox');
+    if (tb) tb.addEventListener('toggle', function () { V.tblOpen = tb.open; });
+  }
+  // 暗号の 絵・表（遊ぶ画面と ふりかえりで 同じものを 出す。done＝ふりかえり）
+  function puzzleVisual(st, done) {
+    var P = puz(), h = '';
     if (st.gen === 'letter' && P.lp.ok) {
       h += '<ol class="clues">' + P.lp.items.map(function (it, i) {
         return '<li><span class="n">' + CIRC.charAt(i) + '</span><span class="w">「' + esc(it.word) + '」</span><span class="p">' + it.pos + '文字目</span></li>';
@@ -739,14 +892,52 @@
       h += '<div class="cardwrap">' + cardHtml(st.card) + '</div>';
     } else if (st.gen === 'clock' && P.cp.ok) {
       h += '<div class="side-by-side two">' + paperHtml(260).replace('width:260px', 'width:100%') + '<div style="text-align:center">' + clockSvg(P.cp.dial, 250) + '</div></div>';
+    } else if (st.gen === 'balance' && P.ch && P.ch.ok) {
+      h += '<div class="scales">' + P.ch.balance.eqs.map(function (e, i) { return '<div class="scale"><b>' + CIRC.charAt(i) + '</b>' + scaleSvg(e) + '</div>'; }).join('') + '</div>' +
+        '<div class="panel q-ask">■ ＝ ● × <b>？</b></div>';
+    } else if (st.gen === 'liar' && P.ch && P.ch.ok) {
+      var pick = done ? String(P.ch.liar.real) : (V.input || [])[0];
+      h += '<div class="liars">' + P.ch.liar.says.map(function (x, i) {
+        var m = NL.MESSENGERS[i];
+        return '<button class="liar' + (pick === String(i) ? ' on' : '') + '"' + (done ? ' disabled' : ' data-choice="' + i + '"') + '><span class="li">' + m.icon + '</span><span class="ln">' + esc(m.name) + '</span>' +
+          '<span class="ls">「' + T(x.text) + '」</span></button>';
+      }).join('') + '</div>' + (done ? '' : '<p class="small" style="text-align:center">' + T('ほんものだと 思う 人を おして、「こたえる」') + '</p>');
+    } else if (st.gen === 'shift' && P.ch && P.ch.ok) {
+      h += scrollsHtml() + '<details class="panel"' + (V.tblOpen ? ' open' : '') + ' id="tblbox"><summary>📜 ' + T('あいうえお表（じゅんばん）を 見る') + '</summary>' + kanaOrderHtml() + '</details>';
+    } else if (st.gen === 'magic' && P.mg.ok) {
+      h += '<div class="magic">' + P.mg.square.map(function (v, i) {
+        var show = P.mg.shown.indexOf(i) >= 0;
+        return '<div class="' + (i === P.mg.star ? 'star' : show ? 'num' : 'blank') + '">' + (i === P.mg.star ? (done ? v : '★') : show ? v : '') + '</div>';
+      }).join('') + '</div>';
     } else if (st.body) {
       h += '<div class="panel">' + T(st.body) + '</div>';
     }
-    h += '<div class="slots" id="slots"></div><div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
-    h += kanaKeyboard();
-    h += '<button class="btn gold" data-act="answer">🔍 こたえる</button>';
-    $app.innerHTML = frame(chHtml, h);
-    paintSlots(ans.length);
+    return h;
+  }
+  // 天びん 1つ（左と 右が つりあっている）。皿は うでの 上に のせる形（つり糸が 絵に かぶらない）
+  function scaleSvg(e) {
+    function items(list, cx) {
+      var o = '', n = list.length;
+      list.forEach(function (k, i) {
+        var row = Math.floor(i / 3), col = i % 3, inRow = Math.min(3, n - row * 3);
+        var x = cx + (col - (inRow - 1) / 2) * 24, y = 70 - row * 23;
+        if (k === 'c') o += '<circle cx="' + x + '" cy="' + y + '" r="10" fill="#ffcf4a" stroke="#8a6a1a" stroke-width="1.5"/>';
+        else if (k === 't') o += '<polygon points="' + x + ',' + (y - 11) + ' ' + (x + 11) + ',' + (y + 9) + ' ' + (x - 11) + ',' + (y + 9) + '" fill="#3ff0ff" stroke="#167a86" stroke-width="1.5"/>';
+        else o += '<rect x="' + (x - 10) + '" y="' + (y - 10) + '" width="20" height="20" fill="#ff7ab8" stroke="#8a2a5a" stroke-width="1.5"/>';
+      });
+      return o;
+    }
+    return '<svg viewBox="0 0 300 140" class="scl"><path d="M150 100 L128 136 L172 136Z" fill="#6b5a3a"/>' +
+      '<rect x="30" y="96" width="240" height="7" rx="3" fill="#c9a23a"/><circle cx="150" cy="99" r="6" fill="#8a6a3a"/>' +
+      '<rect x="72" y="84" width="6" height="14" fill="#c9a23a"/><rect x="222" y="84" width="6" height="14" fill="#c9a23a"/>' +
+      '<path d="M36 80 Q75 92 114 80Z" fill="#c9a23a"/><path d="M186 80 Q225 92 264 80Z" fill="#c9a23a"/>' +
+      items(e.L, 75) + items(e.R, 225) + '</svg>';
+  }
+  // あいうえお表を 1れつに（ずらすときに 数えやすい）。「ん」の つぎは「あ」に もどる
+  function kanaOrderHtml() {
+    var rows = ['あいうえお', 'かきくけこ', 'さしすせそ', 'たちつてと', 'なにぬねの', 'はひふへほ', 'まみむめも', 'やゆよ', 'らりるれろ', 'わをん'];
+    return '<div class="korder">' + rows.map(function (r) { return '<span class="kg">' + Array.from(r).map(function (k) { return '<i>' + k + '</i>'; }).join('') + '</span>'; }).join('<b>▸</b>') +
+      '<b>▸</b><span class="kg loop"><i>あ</i></span></div><p class="small">' + T('「ん」の つぎは、また「あ」に もどるよ。゛や ゜、小さい 字の しるしは、ずらしたあとも そのまま つける。') + '</p>';
   }
   function paintSlots(n) {
     var el = document.getElementById('slots'); if (!el) return;
@@ -798,8 +989,8 @@
     var st = cur().st;
     var ans = answerOf(st);
     var got = (V.input || []).join('');
-    if (!got) { toast('文字を 入れてね'); return; }
-    if (NL.sameAnswer(got, ans)) {
+    if (!got) { toast(st.input === 'choice' ? 'だれか 1人を えらんでね' : st.input === 'num' ? '数を 入れてね' : '文字を 入れてね'); return; }
+    if (st.input === 'num' || st.input === 'choice' ? got === ans : NL.sameAnswer(got, ans)) {
       sfx('ok');
       flash();
       state.cleared[st.id + ':solved'] = true;
@@ -815,7 +1006,7 @@
       V.miss = (V.miss || 0) + 1;
       V.wrongMsg = V.miss >= 2 ? 'ちがうようだ……💡ヒントを 見てみよう' : 'ちがうようだ……もう一度 考えよう';
       var w = document.getElementById('wrong'); if (w) w.textContent = V.wrongMsg;
-      var s = document.getElementById('slots');
+      var s = document.getElementById('slots') || document.querySelector('.liars');
       if (s) { s.classList.remove('shake'); void s.offsetWidth; s.classList.add('shake'); }
       if (navigator.vibrate) try { navigator.vibrate([80, 40, 80]); } catch (e) { /* 無し */ }
     }
@@ -861,9 +1052,27 @@
     }, 420);
     every(function () { if (!V.codeMode) sfx('ping'); }, (nfc && nfc.step === st.id) ? 900 : 2400);
   }
-  function numPad() {
-    return '<div class="np">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-n="' + n + '">' + n + '</button>'; }).join('') +
-      '<button class="fn" data-nf="clr">けす</button><button data-n="0">0</button><button class="fn" data-nf="bs">⌫</button></div>';
+  // pre＝'n'（捜査コード）か 'pn'（暗号の 数）
+  function numPad(pre) {
+    pre = pre || 'n';
+    return '<div class="np">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-' + pre + '="' + n + '">' + n + '</button>'; }).join('') +
+      '<button class="fn" data-' + pre + 'f="clr">けす</button><button data-' + pre + '="0">0</button><button class="fn" data-' + pre + 'f="bs">⌫</button></div>';
+  }
+  function puzNumKey(n, fn) {
+    var st = cur().st, len = answerOf(st).length;
+    V.input = V.input || [];
+    if (fn === 'bs') V.input.pop();
+    else if (fn === 'clr') V.input = [];
+    else if (V.input.length < len + 1) V.input.push(String(n));
+    sfx('key');
+    V.wrongMsg = ''; var w = document.getElementById('wrong'); if (w) w.textContent = '';
+    paintSlots(len);
+  }
+  function pickChoice(i) {
+    V.input = [String(i)]; V.wrongMsg = '';
+    sfx('key');
+    Array.prototype.forEach.call(document.querySelectorAll('.liar'), function (b) { b.classList.toggle('on', b.getAttribute('data-choice') === String(i)); });
+    var w = document.getElementById('wrong'); if (w) w.textContent = '';
   }
   function paintCode() {
     var el = document.getElementById('codeslots'); if (!el) return;
@@ -1084,6 +1293,54 @@
       '<path d="M70 116 L60 146 M100 118 L100 150 M130 116 L140 146" stroke="#ffe08a" stroke-width="8" stroke-linecap="round" opacity=".7"/></svg>';
   }
 
+  // ---------- からくり錠（4つの 絵を 左から ならべる） ----------
+  function renderOrder(chHtml, st) {
+    var lk = puz().lk, it = NL.LOCK_ITEMS;
+    V.ord = V.ord || [];
+    var lit = (state.hints[st.id] || 0) >= 3;
+    var h = '<div class="puzzle-head"><span class="tag">FINAL</span><h2 style="margin:0">' + T(st.title) + '</h2></div>' +
+      '<p class="lead">' + T(st.question) + '</p>' +
+      '<details class="panel"' + (V.clOpen !== false ? ' open' : '') + ' id="clbox"><summary>📜 ' + T('[巻物|まきもの]の 切れはしを 見る') + '</summary><ol class="lkclues">' +
+      lk.clues.map(function (c) { return '<li>' + esc(c.text) + '</li>'; }).join('') + '</ol></details>' +
+      '<div class="lock" id="lock"><div class="lbl">KARAKURI LOCK</div><div class="lslots">';
+    for (var i = 0; i < 4; i++) {
+      var x = V.ord[i];
+      h += '<span class="ls' + (i === V.ord.length ? ' cur' : '') + '"><small>' + T('左から') + ' ' + (i + 1) + '</small>' + (x != null ? '<b>' + it[x].e + '</b><em>' + esc(it[x].n) + '</em>' : '') + '</span>';
+    }
+    h += '</div><div class="lbtns">';
+    it.forEach(function (x, k) {
+      var used = V.ord.indexOf(k) >= 0, at = lit ? lk.answer.indexOf(k) + 1 : 0;
+      h += '<button data-lk="' + k + '"' + (used ? ' disabled' : '') + (at ? ' class="lit"' : '') + '><b>' + x.e + '</b><em>' + esc(x.n) + '</em>' + (at ? '<i>' + at + '</i>' : '') + '</button>';
+    });
+    h += '</div><div class="padfn"><button data-act="lk-bs">⌫</button><button data-act="lk-clr">けす</button></div></div>' +
+      '<button class="btn gold" data-act="lk-go">🔓 ' + T('からくりを とく') + '</button><div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
+    $app.innerHTML = frame(chHtml, h);
+    var cb = document.getElementById('clbox');
+    if (cb) cb.addEventListener('toggle', function () { V.clOpen = cb.open; });
+  }
+  function orderKey(k) {
+    V.ord = V.ord || [];
+    if (V.ord.length < 4 && V.ord.indexOf(k) < 0) V.ord.push(k);
+    V.wrongMsg = ''; sfx('key'); render();
+  }
+  function orderGo() {
+    var st = cur().st, lk = puz().lk;
+    if (!V.ord || V.ord.length < 4) { toast(T('4つ ぜんぶ ならべてね')); return; }
+    if (V.ord.join(',') === lk.answer.join(',')) {
+      state.cleared[st.id + ':ok'] = true; save();
+      var el = document.getElementById('lock'); if (el) el.classList.add('ok');
+      sfx('unlock'); flash();
+      later(function () { sfx('get'); }, 900);
+      later(function () { V.ord = []; advance(); }, 2200);
+      return;
+    }
+    sfx('ng'); state.wrong++; save();
+    V.miss = (V.miss || 0) + 1; V.ord = [];
+    V.wrongMsg = V.miss >= 2 ? 'カチッ……ひらかない。💡ヒントを 見てみよう' : 'カチッ……ひらかない。切れはしを 1まいずつ たしかめよう';
+    render();
+    var p = document.getElementById('lock'); if (p) { p.classList.remove('shake'); void p.offsetWidth; p.classList.add('shake'); }
+  }
+
   // ---------- 金庫 ----------
   function renderSafe(chHtml, st) {
     if (!V.dial) V.dial = [0, 0, 0, 0];
@@ -1251,13 +1508,14 @@
     save();
     sfx('key');
     // 発射パネルは ヒント3で ボタンが光る（うしろの画面を描き直す）
-    if (st.type === 'pad') render();
+    if (st.type === 'pad' || st.type === 'order') render();
     showHint();
   }
   function showMenu() {
     var h = '<div class="overlay" data-act="close-layer"><div class="sheet" data-stop="1"><button class="x" data-act="close-layer">とじる</button><h2>⚙ メニュー</h2>' +
       '<button class="btn" data-act="tog-sound">' + (pref.sound ? '🔊 こうかおん：オン' : '🔈 こうかおん：オフ') + '</button>' +
       '<button class="btn" data-act="tog-speak">' + (pref.autoSpeak ? '🗣 ' + T('お話を 自動で 読む：オン') : '🗣 ' + T('お話を 自動で 読む：オフ')) + '</button>' +
+      (state && route === 'play' && state.stepId !== 'done' ? '<button class="btn ghost" data-act="restart-cur">↺ ' + T('はじめから やりなおす') + '</button>' : '') +
       '<button class="btn ghost" data-act="title">📁 ' + R('[事件|じけん]ファイルへ もどる') + '</button>' +
       '<button class="btn ghost" data-act="parent">おうちの方へ（準備）</button></div></div>';
     $layer.innerHTML = h;
@@ -1352,6 +1610,7 @@
       '<tr><td>暗号その1</td><td>' + esc(v.a1) + '（' + esc(v.place1) + '・' + esc(KIND_INFO[cardKinds().p1][0]) + '）</td></tr>' +
       '<tr><td>暗号その2</td><td>' + esc(v.a2) + '（' + esc(v.place2) + '・' + esc(KIND_INFO[cardKinds().p2][0]) + '）</td></tr>' +
       (hasStep('safe') ? '<tr><td>金庫</td><td>' + esc(v.code) + '（' + v.d1 + '・' + v.d2 + '・' + v.key + '×2）</td></tr>' : '') +
+      gateRowsHtml() +
       STEPS.filter(function (x) { return x.st.type === 'pad'; }).map(function (x) { return '<tr><td>' + esc(NL.plainText(x.st.title)) + '</td><td>宇宙文字で「' + esc(x.st.word) + '」（ヒント3でボタンが光ります）</td></tr>'; }).join('') +
       '</table></div>';
 
@@ -1391,6 +1650,7 @@
   var KIND_INFO = {
     letter: ['文字ひろい（画面）', '言葉の「何文字目」をひろって並べる。D-PHONE の画面に出ます。'],
     clock: ['時計の暗号', '計算の紙と、ひらがなの時計の文字ばん。'],
+    shift: ['3つの関門（画面）', '天びん → ほんものの使い → ずらし文字 の3だん。この物語では変えられません。'],
     mirror: ['鏡文字カード', '左右反対に書いた文字を読む。'],
     tanuki: ['たぬきカード', '「た」（または「こ」）をぬいて読む。'],
     gojuon: ['あいうえお表カード', 'マークと数で、表から字をさがす。'],
@@ -1403,16 +1663,30 @@
     if (!NL.isHiraOnly(y || '')) return '';
     if (kind === 'letter') { var lp = NL.letterPuzzle(y, d.seed); return lp.ok ? '' : '「' + (lp.missing || []).join('・') + '」の言葉がない'; }
     if (kind === 'clock') return NL.clockPuzzle(y, d.seed).ok ? '' : '作れない';
+    if (kind === 'shift') { var chp = NL.chainPuzzle(y, d.seed, [d.places[1].yomi]); return chp.ok ? '' : chp.reason; }
     if (kind === 'image') return '';
     var cp = NL.cardPuzzle(kind, y, (d.seed >>> 0) + PUZ_PLACE[id]);
     return cp.ok ? '' : cp.reason;
+  }
+  // 準備画面の 答え：画面だけで とく 暗号（3つの関門・からくり箱・からくり錠）
+  function gateRowsHtml() {
+    var P = puz(), h = '';
+    STEPS.forEach(function (x) {
+      var st = x.st, a = '';
+      if (st.type === 'puzzle' && st.gen === 'balance' && P.ch && P.ch.ok) a = '■＝●×' + P.ch.n + '（三の関門で ' + P.ch.n + '字 もどす）';
+      else if (st.type === 'puzzle' && st.gen === 'liar' && P.ch && P.ch.ok) a = NL.MESSENGERS[P.ch.liar.real].name + '（にせものの巻物は「' + P.ch.decoys.join('」「') + '」）';
+      else if (st.type === 'puzzle' && st.gen === 'magic' && P.mg.ok) a = '★＝' + P.mg.answer;
+      else if (st.type === 'order' && P.lk.ok) a = '左から ' + vars().lkAns;
+      if (a) h += '<tr><td>' + esc(NL.plainText(st.title)) + '</td><td>' + esc(a) + '</td></tr>';
+    });
+    return h;
   }
   function cardPanelHtml(d) {
     var ck = cardKinds(d);
     var h = '<div class="panel"><h3>🔐 暗号の種類</h3><p class="small">暗号の答えは、どれも次の隠し場所の読みになります。暗号カードは隠し場所に合わせて自動で作ります（印刷する紙にも載ります）。</p>';
     ['p1', 'p2'].forEach(function (id) {
       var i = PUZ_PLACE[id], pl = d.places[i];
-      var kinds = (id === 'p1' ? ['letter'] : ['clock']).concat(NL.CARD_KINDS, ['image']);
+      var kinds = (SC.slotKinds && SC.slotKinds[id]) || (id === 'p1' ? ['letter'] : ['clock']).concat(NL.CARD_KINDS, ['image']);
       h += '<h3 style="color:var(--cyan);margin-top:12px">暗号その' + (i + 1) + '（答え＝場所' + (i + 1) + '「' + esc(pl.name) + '」の読み「' + esc(NL.normKana(pl.yomi)) + '」）</h3><div class="cardpick">';
       kinds.forEach(function (k) {
         var why = kindOk(d, id, k), on = ck[id] === k;
@@ -1552,7 +1826,7 @@
     [0, 1].forEach(function (i) {
       h += '<div class="print-page"><div class="ts">TOP SECRET</div><div style="margin-top:8px;color:#555">' + esc(caseName(kase)) + '</div><div class="pl">' + T(((SC.print && SC.print.placeWord) || '[現場|げんば]') + (i ? 'B' : 'A') + '：') + esc(setup.places[i].name) + '</div>';
       if (m.code) h += '<div>' + T('[捜査|そうさ]コード') + '</div><div class="code">' + NL.sceneCode(setup.seed, i) + '</div>';
-      if (i === 0 && isCardKind(cardKinds().p2)) h += '<div class="print-card">' + T('[怪盗|かいとう]の 暗号カード') + cardHtml(1) + '</div>';
+      if (i === 0 && isCardKind(cardKinds().p2)) h += '<div class="print-card">' + T((SC.print && SC.print.cardWord) || '[怪盗|かいとう]の 暗号カード') + cardHtml(1) + '</div>';
       else if (i === 1 && SC.print && SC.print.placeB) h += '<div style="text-align:center;margin:18px 0">' + art(SC.print.placeB, 200) + '</div>';
       else h += '<div style="max-width:420px">' + (i === 0 ? paperHtml(400) : memoHtml(420)) + '</div>';
       h += '<div class="parent-note">おうちの方へ：このカードを「' + esc(setup.places[i].name) + '」に隠し、そばにタグ（場所' + (i + 1) + 'のURL）を貼ってください。' +
@@ -1583,6 +1857,10 @@
     if ((el = t.closest('[data-pad]'))) { padKey(+el.getAttribute('data-pad')); return; }
     if ((el = t.closest('[data-ps]'))) { passKey(+el.getAttribute('data-ps')); return; }
     if ((el = t.closest('[data-psf]'))) { passKey(null, el.getAttribute('data-psf')); return; }
+    if ((el = t.closest('[data-pn]'))) { puzNumKey(el.getAttribute('data-pn')); return; }
+    if ((el = t.closest('[data-pnf]'))) { puzNumKey(null, el.getAttribute('data-pnf')); return; }
+    if ((el = t.closest('[data-choice]'))) { pickChoice(+el.getAttribute('data-choice')); return; }
+    if ((el = t.closest('[data-lk]'))) { orderKey(+el.getAttribute('data-lk')); return; }
     if ((el = t.closest('[data-n]'))) { numKey(el.getAttribute('data-n')); return; }
     if ((el = t.closest('[data-nf]'))) { numKey(null, el.getAttribute('data-nf')); return; }
     if ((el = t.closest('[data-dial]'))) { turnDial(+el.getAttribute('data-dial'), +el.getAttribute('data-d')); return; }
@@ -1600,7 +1878,7 @@
   }
   function act_(act, el) {
     switch (act) {
-      case 'title': closeLayer(); V = {}; route = 'title'; if (location.hash) history.replaceState(null, '', location.pathname); render(); window.scrollTo(0, 0); break;
+      case 'title': closeLayer(); V = {}; RV = null; route = 'title'; if (location.hash) history.replaceState(null, '', location.pathname); render(); window.scrollTo(0, 0); break;
       case 'case-start':
         if (!ME) { route = 'title'; render(); return; }
         selectCase(el.getAttribute('data-case')); audio(); newGame(ME.name); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
@@ -1619,13 +1897,25 @@
         sfx('key'); break;
       }
       case 'logout': login(null); V = {}; route = 'title'; render(); window.scrollTo(0, 0); break;
-      case 'case-cont': audio(); selectCase(el.getAttribute('data-case')); route = 'play'; V = {}; render(); window.scrollTo(0, 0); break;
+      case 'case-cont': audio(); selectCase(el.getAttribute('data-case')); route = 'play'; V = {}; RV = null; render(); window.scrollTo(0, 0); break;
+      case 'case-restart':
+        selectCase(el.getAttribute('data-case'));
+        if (confirm('はじめから やりなおしますか？（いまの すすみぐあいは 消えます）')) { restartCase(); }
+        break;
+      case 'restart-cur':
+        if (confirm('はじめから やりなおしますか？（いまの すすみぐあいは 消えます）')) { closeLayer(); restartCase(); }
+        break;
+      case 'back': goBack(); break;
+      case 'rv-prev': goBack(); break;
+      case 'rv-next': RV = Math.min(RV + 1, curIndex() - 1); sfx('key'); render(); window.scrollTo(0, 0); break;
+      case 'rv-exit': RV = null; sfx('key'); render(); window.scrollTo(0, 0); break;
+      case 'lk-go': orderGo(); break;
+      case 'lk-bs': if (V.ord) V.ord.pop(); sfx('key'); render(); break;
+      case 'lk-clr': V.ord = []; sfx('key'); render(); break;
       case 'case-cert': selectCase(el.getAttribute('data-case')); route = 'cert'; render(); window.scrollTo(0, 0); break;
       case 'case-replay':
         selectCase(el.getAttribute('data-case'));
-        if (confirm('はじめから 遊びますか？（この 事件の にんていしょうは 消えます）')) {
-          state = null; lsDel(stateKey(kase.id)); audio(); newGame(ME.name); route = 'play'; V = {}; render(); window.scrollTo(0, 0);
-        }
+        if (confirm('はじめから 遊びますか？（この 事件の にんていしょうは 消えます）')) restartCase();
         break;
       case 'name-ok': {
         var nm = (document.getElementById('nm').value || '').trim().slice(0, 12);

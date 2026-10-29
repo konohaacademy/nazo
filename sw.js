@@ -1,7 +1,7 @@
 // 怪盗からの挑戦状 — まず取りに行き、つながらないときだけ しまったものを出す。
 // ⚠ しまったものを先に出すと、直した app.js や stories/*.json が子どもの端末に届かなくなる（もじかずクイズと同じ）。
-var CACHE = 'nazo-v6';
-var SHELL = ['./', 'index.html', 'style.css?v=11', 'logic.js?v=11', 'cards.js?v=11', 'app.js?v=11', 'stories.json', 'stories/bluemoon.json', 'stories/pico.json', 'presets.json', 'icon-192.png'];
+var CACHE = 'nazo-v7';
+var SHELL = ['./', 'index.html', 'style.css?v=12', 'logic.js?v=12', 'cards.js?v=12', 'app.js?v=12', 'stories.json', 'stories/bluemoon.json', 'stories/pico.json', 'stories/ninja.json', 'presets.json', 'icon-192.png'];
 self.addEventListener('install', function (e) {
   self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).catch(function () { /* 次に開いたとき */ }));
