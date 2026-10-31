@@ -10,7 +10,8 @@
   var THEMES = {
     parchment: { ink: INK, sign: 'かいとう クロウ', mark: 'mask' },
     space: { ink: '#e9f6ff', sign: 'キラリ星の ピコ', mark: 'star' },
-    washi: { ink: INK, sign: 'にんじゃねこ くろまる', mark: 'mask' }
+    washi: { ink: INK, sign: 'にんじゃねこ くろまる', mark: 'mask' },
+    lab: { ink: INK, sign: 'ハカセ と ロボット ボルト', mark: 'mask' }
   };
   var TH = THEMES.parchment;
 
@@ -21,6 +22,10 @@
     gojuon: 'あいうえお表で 読みとけ',
     arrow: 'スタートから やじるしの とおりに 進め',
     alien: 'キラリ星の 文字を ほんやく せよ',
+    anaume: '□に 入る 字を つなげて 読め',
+    wordsearch: 'かくれた ことばを 消して 読め',
+    shiritori: 'しりとりで つないで 読め',
+    sakanobori: 'スタートが 消えた やじるし めいろ',
     image: 'かいとうの 暗号カード'
   };
 
@@ -117,7 +122,7 @@
     cp.codes.forEach(function (c, i) {
       var x = x0 + i * (tile + gap), y = y0 + 28;
       h += '<rect x="' + x + '" y="' + y + '" width="' + tile + '" height="' + tile + '" rx="16" fill="#0b1438" stroke="#5ee7ff" stroke-width="3"/>' +
-        glyph(GL[c.glyph], x + tile / 2, y + tile / 2, tile * 0.28, '#5ee7ff');
+        (c.bar ? '<text x="' + (x + tile / 2) + '" y="' + (y + tile / 2) + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(tile * 0.6) + '" fill="#5ee7ff">ー</text>' : glyph(GL[c.glyph], x + tile / 2, y + tile / 2, tile * 0.28, '#5ee7ff'));
       if (c.mark) h += markBadge(c.mark, x + tile - 6, y + 6, tile * 0.22);
     });
     // ほんやく表（下）
@@ -274,8 +279,9 @@
     var tx = 600 - w / 2, ty = 548;
     cp.codes.forEach(function (cd, i) {
       var x = tx + i * (tile + gap);
-      h += '<rect x="' + x + '" y="' + ty + '" width="' + tile + '" height="' + (tile * 1.5) + '" rx="12" fill="#fffdf4" stroke="#5a3d1b" stroke-width="3"/>' +
-        shape(cp.shapes[cd.col], x + tile / 2, ty + tile * 0.48, tile * 0.3) +
+      h += '<rect x="' + x + '" y="' + ty + '" width="' + tile + '" height="' + (tile * 1.5) + '" rx="12" fill="#fffdf4" stroke="#5a3d1b" stroke-width="3"/>';
+      if (cd.bar) { h += '<text x="' + (x + tile / 2) + '" y="' + (ty + tile * 0.75) + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(tile * 0.6) + '" fill="' + INK + '">ー</text>'; return; }
+      h += shape(cp.shapes[cd.col], x + tile / 2, ty + tile * 0.48, tile * 0.3) +
         '<text x="' + (x + tile / 2) + '" y="' + (ty + tile * 1.15) + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(tile * 0.42) + '" fill="#8d2a1f">' + (cd.row + 1) + '</text>';
       if (cd.mark) h += markBadge(cd.mark, x + tile - 4, ty + 4, tile * 0.23);
     });
@@ -312,6 +318,128 @@
     return h;
   }
 
+  // ---------- 小さな 説明の 文（白い 帯の 上に） ----------
+  function note(lines, y, size) {
+    size = size || 26;
+    var w = 0;
+    lines.forEach(function (l) { w = Math.max(w, Array.from(l).length * size * 0.95); });
+    var h = lines.length * (size + 10) + 14;
+    var out = '<rect x="' + (600 - w / 2 - 22) + '" y="' + y + '" width="' + (w + 44) + '" height="' + h + '" rx="14" fill="#fffdf4" opacity=".93" stroke="#5a3d1b" stroke-width="2"/>';
+    lines.forEach(function (l, i) {
+      out += '<text x="600" y="' + (y + 10 + (i + 0.5) * (size + 10)) + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="700" font-size="' + size + '" fill="' + INK + '">' + esc(l) + '</text>';
+    });
+    return out;
+  }
+  function charRow(chars, x, y, size, blankAt, opts) {
+    // 字を 1つずつ ならべる。blankAt の ところは 赤い わくの □
+    opts = opts || {};
+    var out = '';
+    chars.forEach(function (c, i) {
+      var cx = x + i * size + size / 2;
+      if (i === blankAt) {
+        out += '<rect x="' + (cx - size * 0.42) + '" y="' + (y - size * 0.42) + '" width="' + (size * 0.84) + '" height="' + (size * 0.84) + '" rx="6" fill="#fff" stroke="#c8283c" stroke-width="' + Math.max(3, size * 0.08) + '"/>';
+      } else {
+        out += '<text x="' + cx + '" y="' + y + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(size * 0.8) + '" fill="' + INK + '">' + esc(c) + '</text>';
+        if (i === opts.circle) out += '<circle cx="' + cx + '" cy="' + y + '" r="' + (size * 0.5) + '" fill="none" stroke="#c8283c" stroke-width="' + Math.max(3, size * 0.09) + '"/>';
+      }
+    });
+    return out;
+  }
+
+  // ---------- あなうめ（□に 入る 字は 3つとも 同じ） ----------
+  var CIRC = '①②③④⑤⑥⑦⑧⑨';
+  function anaume(cp) {
+    var L = cp.rows.length, two = false, colW = 1000, rows = L;
+    var top = 236, rh = Math.min(108, Math.floor(504 / rows));
+    var maxLen = 0;
+    cp.rows.forEach(function (r) { r.words.forEach(function (w) { maxLen = Math.max(maxLen, Array.from(w.show || w.w).length); }); });
+    var size = Math.min(rh * 0.62, Math.floor((colW - 150) / (3 * maxLen + 2)));
+    var h = note(['□には 3つとも 同じ 字が 入る。', 'その 字を ①から じゅんに 読もう'], 156, 26);
+    cp.rows.forEach(function (r, i) {
+      var col = two ? Math.floor(i / rows) : 0, row = two ? i % rows : i;
+      var x0 = two ? 60 + col * 560 : 100, cy = top + row * rh + rh / 2;
+      h += '<rect x="' + x0 + '" y="' + (cy - rh * 0.44) + '" width="' + (colW - (two ? 20 : 0)) + '" height="' + (rh * 0.88) + '" rx="14" fill="#fffdf4" opacity=".9" stroke="#d6c39a" stroke-width="2"/>' +
+        '<text x="' + (x0 + 32) + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(size * 0.85) + '" fill="#8d2a1f">' + CIRC.charAt(i) + '</text>';
+      var x = x0 + 62;
+      r.words.forEach(function (w) {
+        var cs = Array.from(w.show || w.w);
+        h += charRow(cs, x, cy, size, w.at);
+        x += cs.length * size + size * 0.9;
+      });
+    });
+    return h;
+  }
+
+  // ---------- かくれんぼ文字（ことばを 消すと のこりの 字が 答え） ----------
+  function wordsearch(cp) {
+    var n = cp.n, cell = n === 4 ? 112 : 98, w = n * cell, x0 = 120, y0 = 470 - w / 2 + 20;
+    var h = '<rect x="' + (x0 - 14) + '" y="' + (y0 - 14) + '" width="' + (w + 28) + '" height="' + (w + 28) + '" rx="16" fill="#fffdf4" stroke="#5a3d1b" stroke-width="4"/>';
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {
+      var px = x0 + x * cell, py = y0 + y * cell;
+      h += '<rect x="' + px + '" y="' + py + '" width="' + cell + '" height="' + cell + '" fill="none" stroke="#d6c39a" stroke-width="2"/>' +
+        '<text x="' + (px + cell / 2) + '" y="' + (py + cell / 2) + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(cell * 0.56) + '" fill="' + INK + '">' + esc(cp.grid[y * n + x]) + '</text>';
+    }
+    var tx = x0 + w + 60, lines = [
+      [cp.cat + 'が ' + cp.words.length + cp.unit, 40, '#8d2a1f'],
+      ['かくれている！', 40, '#8d2a1f'],
+      ['', 16],
+      ['たて・よこに 読める', 28, INK],
+      ['（さかさまも ある）', 28, INK],
+      ['', 16],
+      ['ぜんぶ 見つけて 消したら、', 28, INK],
+      ['のこった 字を 上の 行から', 28, INK],
+      ['左→右の じゅんに 読め', 28, INK]
+    ];
+    var yy = 250;
+    h += '<rect x="' + (tx - 26) + '" y="' + (yy - 46) + '" width="' + (1110 - tx + 26) + '" height="470" rx="16" fill="#fffdf4" opacity=".9"/>';
+    lines.forEach(function (l) {
+      if (l[0]) h += '<text x="' + tx + '" y="' + yy + '" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + l[1] + '" fill="' + l[2] + '">' + esc(l[0]) + '</text>';
+      yy += l[1] + 14;
+    });
+    return h;
+  }
+
+  // ---------- しりとり（つなげて、○の 字を 読む） ----------
+  function shiritori(cp) {
+    var m = cp.chain.length, cols = m <= 6 ? 3 : 4, rows = Math.ceil(m / cols);
+    var bw = cols === 3 ? 320 : 250, bh = Math.min(118, Math.floor(430 / rows)), gx = 24, gy = 20;
+    var tw = cols * bw + (cols - 1) * gx, x0 = 600 - tw / 2, y0 = 300;
+    var h = note(['ことばを ぜんぶ しりとりで 1本に つなげよう。', '○の 字を、つないだ じゅんに 読め'], 156, 26);
+    cp.show.forEach(function (ci, k) {
+      var c = cp.chain[ci], cs = Array.from(c.show || c.w);
+      var x = x0 + (k % cols) * (bw + gx), y = y0 + Math.floor(k / cols) * (bh + gy);
+      var size = Math.min(bh * 0.62, Math.floor((bw - 30) / cs.length));
+      h += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '" rx="18" fill="#fffdf4" stroke="#5a3d1b" stroke-width="3"/>' +
+        charRow(cs, x + (bw - cs.length * size) / 2, y + bh / 2, size, -1, { circle: c.at });
+    });
+    h += '<text x="600" y="' + (y0 + rows * (bh + gy) + 26) + '" text-anchor="middle" font-family="' + FONT + '" font-weight="700" font-size="22" fill="' + TH.ink + '">（「が」と「か」、「ゃ」と「や」は 同じと 考えて つないで よい）</text>';
+    return h;
+  }
+
+  // ---------- さかのぼり迷路（スタートが かいていない） ----------
+  function sakanobori(cp) {
+    var n = cp.size, cell = n === 4 ? 112 : 94, gap = n === 4 ? 10 : 8, w = n * cell + (n - 1) * gap;
+    var x0 = 600 - w / 2, y0 = 488 - w / 2;
+    var h = note(['スタートの しるしが 消されてしまった！', 'ゴールに たどりつく 道は 1本だけ。その 道の 字を 読め'], 150, 24);
+    h += '<rect x="' + (x0 - 18) + '" y="' + (y0 - 18) + '" width="' + (w + 36) + '" height="' + (w + 36) + '" rx="18" fill="#5a3d1b" opacity=".12"/>';
+    var ROT = { r: 0, d: 90, l: 180, u: 270 };
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {
+      var c = cp.grid[y][x], px = x0 + x * (cell + gap), py = y0 + y * (cell + gap), cx = px + cell / 2;
+      h += '<rect x="' + px + '" y="' + py + '" width="' + cell + '" height="' + cell + '" rx="14" fill="#fffdf4" stroke="#5a3d1b" stroke-width="3"/>' +
+        '<text x="' + cx + '" y="' + (py + cell * 0.42) + '" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="' + Math.round(cell * 0.42) + '" fill="' + INK + '">' + esc(c.kana) + '</text>';
+      var ay = py + cell * 0.8;
+      if (c.dir === 'goal') {
+        h += '<g transform="translate(' + cx + ' ' + ay + ')"><rect x="-34" y="-13" width="68" height="26" rx="13" fill="#2f8f4e"/>' +
+          '<text x="0" y="1" text-anchor="middle" dominant-baseline="central" font-family="' + FONT + '" font-weight="900" font-size="17" fill="#fff">ゴール</text></g>';
+      } else {
+        var L = c.dir === 'u' || c.dir === 'd' ? 12 : 20;
+        h += '<g transform="translate(' + cx + ' ' + ay + ') rotate(' + ROT[c.dir] + ')"><line x1="' + (-L) + '" y1="0" x2="' + (L - 6) + '" y2="0" stroke="#8d2a1f" stroke-width="6" stroke-linecap="round"/>' +
+          '<polygon points="' + (L + 6) + ',0 ' + (L - 9) + ',-10 ' + (L - 9) + ',10" fill="#8d2a1f"/></g>';
+      }
+    }
+    return h;
+  }
+
   // ---------- 外から入れた画像（Googleドライブ・写真） ----------
   // ドライブの共有リンクは、そのままでは画像として出せない。ファイルIDを取り出して縮小画像のURLにする
   function driveId(u) {
@@ -343,7 +471,8 @@
     TH = THEMES[opts.theme] || THEMES.parchment;
     var id = ++uid;
     var body = cp.kind === 'mirror' ? mirror(cp) : cp.kind === 'tanuki' ? tanuki(cp) : cp.kind === 'gojuon' ? gojuon(cp) : cp.kind === 'arrow' ? arrow(cp) :
-      cp.kind === 'alien' ? alien(cp, opts.glyphs || (root.NazoLogic && root.NazoLogic.ALIEN_GLYPHS) || []) : '';
+      cp.kind === 'alien' ? alien(cp, opts.glyphs || (root.NazoLogic && root.NazoLogic.ALIEN_GLYPHS) || []) :
+      cp.kind === 'anaume' ? anaume(cp) : cp.kind === 'wordsearch' ? wordsearch(cp) : cp.kind === 'shiritori' ? shiritori(cp) : cp.kind === 'sakanobori' ? sakanobori(cp) : '';
     var out = frame(no || 1, CARD_TEXT[cp.kind] || '', body, id);
     TH = THEMES.parchment;
     return out;

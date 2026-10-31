@@ -136,7 +136,11 @@
       // 忍者やしき：3だんの関門（暗号その1が「ずらし文字」の物語だけ）・からくり箱・からくり錠
       ch: ck.p1 === 'shift' ? NL.chainPuzzle(setup.places[0].yomi, setup.seed, [setup.places[1].yomi]) : null,
       mg: NL.magicPuzzle(setup.seed),
-      lk: NL.orderPuzzle(setup.seed)
+      lk: NL.orderPuzzle(setup.seed),
+      // ロボット研究所：3つの テスト（暗号その1が「かさねる シート」の物語だけ）・プログラムの 箱・オイルの タンク
+      lab: ck.p1 === 'overlay' ? NL.labPuzzle(setup.places[0].yomi, setup.seed, [setup.places[1].yomi]) : null,
+      rb: NL.robotPuzzle(setup.seed),
+      jug: NL.jugPuzzle(setup.seed)
     };
     return PZ;
   }
@@ -160,6 +164,10 @@
     if (cp.kind === 'gojuon') { var c = cp.codes[0]; return { shape: SHAPE_NAME[cp.shapes[c.col]], row: c.row + 1, k: c.kana }; }
     if (cp.kind === 'arrow') { var ks = Array.from(cp.answer); return { k1: ks[0], k2: ks[1] }; }
     if (cp.kind === 'alien') return { k: cp.codes[0].kana };
+    if (cp.kind === 'anaume') return { r1: cp.rows[0].words.map(NL.anaumeBlank).join('・'), k: cp.rows[0].kana };
+    if (cp.kind === 'wordsearch') return { cat: cp.cat, w1: cp.words[0], w2: cp.words[1], wn: cp.words.length };
+    if (cp.kind === 'shiritori') return { s1: cp.chain[0].show, s2: cp.chain[1].show };
+    if (cp.kind === 'sakanobori') { var aa = Array.from(cp.answer); return { g: aa[aa.length - 1], p: aa[aa.length - 2] }; }
     return {};
   }
   // カードの絵（暗号その1＝0・その2＝1）
@@ -194,7 +202,30 @@
       v.lkAns = P.lk.answer.map(function (i) { return NL.LOCK_ITEMS[i].n + NL.LOCK_ITEMS[i].e; }).join(' → ');
       v.lkL = NL.LOCK_ITEMS[P.lk.answer[0]].n + NL.LOCK_ITEMS[P.lk.answer[0]].e;
     }
+    if (P.lab && P.lab.ok) {
+      var mt = P.lab.match;
+      v.mN = P.lab.N; v.mh = P.lab.h; v.mShown = P.lab.mclock.shown;
+      v.mFix = NL.eqText(mt.sol.eq); v.mEq = NL.eqText(mt); v.mFrom = matchFromText(mt);
+    }
+    if (P.rb.ok) { var rh = NL.robotHint(P.rb); v.rbA = P.rb.answer; v.rbH1 = rh.label; v.rbH2 = DIR_WORD[rh.dir]; }
+    if (P.jug.ok) {
+      v.jA = P.jug.a; v.jB = P.jug.b; v.jT = P.jug.t;
+      v.jS3 = jugText(P.jug.sol.slice(0, 3));
+      v.jSol = 'じゅんばんは「' + jugText(P.jug.sol) + '」。これで ちょうど ' + P.jug.t + 'Lに なるよ！';
+    }
     return v;
+  }
+  var DIR_WORD = ['上', '右', '下', '左'];
+  // うごかす ぼうが どこに あるか（ヒント2）
+  function matchFromText(m) {
+    var f = m.sol.from;
+    if (f === 7) return '「' + (m.plus ? '＋' : '−') + '」の たての ぼう';
+    return (f < 7 ? '左の 数「' + m.a + '」' : f < 15 ? 'まん中の 数「' + m.b + '」' : '＝の 右の 数「' + m.c + '」') + 'の ぼう';
+  }
+  function jugText(ops) {
+    var J = puz().jug, A = J.a + 'L', B = J.b + 'L';
+    var W = { fillA: A + 'を いっぱいに', fillB: B + 'を いっぱいに', emptyA: A + 'を からに', emptyB: B + 'を からに', AtoB: A + 'から ' + B + 'へ うつす', BtoA: B + 'から ' + A + 'へ うつす' };
+    return ops.map(function (o) { return W[o]; }).join(' → ');
   }
   var MARK_WORD = { daku: '（゛つき）', han: '（゜つき）', small: '（小さい字）' };
   function T(s) { return NL.rubyHtml(NL.fill(s, vars())); }
@@ -324,7 +355,7 @@
       u.lang = 'ja-JP';
       var v = jaVoice(); if (v) u.voice = v;
       u.rate = 0.95;
-      u.pitch = who === 'kaitou' ? 0.6 : who === 'hakase' ? 1.3 : who === 'pico' ? 1.7 : who === 'kuro' ? 1.2 : 1.05;
+      u.pitch = who === 'kaitou' ? 0.6 : who === 'hakase' ? 1.3 : who === 'pico' ? 1.7 : who === 'kuro' ? 1.2 : who === 'bolt' ? 1.5 : 1.05;
       window.speechSynthesis.speak(u);
     } catch (e) { /* 読み上げは無くても遊べる */ }
   }
@@ -364,7 +395,13 @@
     '<circle cx="23" cy="19" r="2.2" fill="#ffd36b"/><ellipse cx="17" cy="27" rx="4" ry="4.4" fill="#ffd36b"/><ellipse cx="29" cy="27" rx="4" ry="4.4" fill="#ffd36b"/>' +
     '<ellipse cx="17" cy="27" rx="1.3" ry="3.4" fill="#111"/><ellipse cx="29" cy="27" rx="1.3" ry="3.4" fill="#111"/><path d="M21.5 32 L24.5 32 L23 33.6Z" fill="#ff9ec4"/>' +
     '<path d="M19 35 Q23 37.5 27 35" stroke="#888" stroke-width="1.2" fill="none"/><path d="M5 30 L13 31 M5 34 L13 33 M41 30 L33 31 M41 34 L33 33" stroke="#999" stroke-width="1"/></svg>';
-  var WHO = { sys: 'D-PHONE', kaitou: '[怪盗|かいとう]クロウ', hakase: 'ネジマキ[博士|はかせ]', pico: 'ピコ', kuro: '[忍者|にんじゃ]ねこ くろまる' };
+  AV.bolt = '<svg viewBox="0 0 46 46"><line x1="23" y1="9" x2="23" y2="3" stroke="#9fb6c8" stroke-width="2"/><circle cx="23" cy="3" r="2.8" fill="#ffd36b"/>' +
+    '<rect x="8" y="9" width="30" height="26" rx="8" fill="#9fb6c8" stroke="#4a6274" stroke-width="1.5"/><rect x="12" y="13" width="22" height="13" rx="5" fill="#10202a"/>' +
+    '<circle cx="18" cy="19.5" r="3.2" fill="#3ff0ff"/><circle cx="28" cy="19.5" r="3.2" fill="#3ff0ff"/><circle cx="19" cy="18.5" r="1" fill="#fff"/><circle cx="29" cy="18.5" r="1" fill="#fff"/>' +
+    '<path d="M17 30 h12" stroke="#4a6274" stroke-width="2" stroke-linecap="round"/><path d="M20 30 v-1.6 M23 30 v-1.6 M26 30 v-1.6" stroke="#4a6274" stroke-width="1.2"/>' +
+    '<circle cx="6" cy="22" r="3" fill="#ffd36b" stroke="#4a6274"/><circle cx="40" cy="22" r="3" fill="#ffd36b" stroke="#4a6274"/>' +
+    '<rect x="14" y="36" width="18" height="8" rx="3" fill="#7d93a5"/><circle cx="23" cy="40" r="2" fill="#ff7ab8"/></svg>';
+  var WHO = { sys: 'D-PHONE', kaitou: '[怪盗|かいとう]クロウ', hakase: 'ネジマキ[博士|はかせ]', pico: 'ピコ', kuro: '[忍者|にんじゃ]ねこ くろまる', bolt: 'ロボット ボルト' };
 
   function clockSvg(dial, w) {
     var s = '<svg class="art" viewBox="0 0 260 260" width="' + (w || 260) + '" height="' + (w || 260) + '">';
@@ -457,6 +494,15 @@
       case 'box': return boxSvg(w);
       case 'kbox': return kboxSvg(w);
       case 'menkyo': return menkyoSvg(w);
+      case 'bolt': return '<div class="photo pico-photo bolt-photo" style="width:' + (w || 200) + 'px">' + AV.bolt.replace('<svg ', '<svg style="width:100%;height:auto" ') + '<div class="cap">ROBOT BOLT</div></div>';
+      case 'eq': return '<div class="paper" style="width:' + (w || 240) + 'px;transform:rotate(-1deg)"><h4>' + T('テスト1の 答え') + '</h4><div style="font-size:28px;text-align:center;font-family:var(--dot)">' + esc(vars().mFix || '') + '</div></div>';
+      case 'mclock': return '<div style="text-align:center">' + mirrorClockSvg(puz().lab && puz().lab.ok ? puz().lab.h : 3, w || 180) + '</div>';
+      case 'sheets': return sheetsSvg(w);
+      case 'mem1': return memSvg('#2a6bff', '1', w);
+      case 'mem2': return memSvg('#d8323f', '2', w);
+      case 'pbox': return pboxSvg(w);
+      case 'tanks': return tanksSvg(w);
+      case 'medal': return medalSvg(w);
       case 'card1': return '<div class="cardwrap">' + cardHtml(0) + '</div>';
       case 'card2': return '<div class="cardwrap">' + cardHtml(1) + '</div>';
       default: return '';
@@ -512,6 +558,236 @@
       return '<div class="scroll"><div class="sw">' + m.icon + ' ' + esc(m.name) + 'の ' + T('[巻物|まきもの]') + '</div><div class="sb">' + cells.map(shiftCellHtml).join('') + '</div></div>';
     }).join('') + '</div>';
   }
+  // ---------- ロボット研究所の 絵 ----------
+  function mirrorClockSvg(h, w) {
+    // ほんとうの 時計を 描いて、左右を はんたいに する（上の「12」も うらがえしに なる）
+    var c = '<circle cx="120" cy="140" r="80" fill="#fff" stroke="#2b2116" stroke-width="5"/>';
+    for (var i = 0; i < 12; i++) {
+      var a = i * Math.PI / 6, big = i % 3 === 0, r1 = big ? 62 : 68;
+      c += '<line x1="' + (120 + Math.sin(a) * r1).toFixed(1) + '" y1="' + (140 - Math.cos(a) * r1).toFixed(1) + '" x2="' + (120 + Math.sin(a) * 76).toFixed(1) + '" y2="' + (140 - Math.cos(a) * 76).toFixed(1) + '" stroke="#2b2116" stroke-width="' + (big ? 5 : 3) + '" stroke-linecap="round"/>';
+    }
+    c += '<text x="120" y="96" text-anchor="middle" font-size="24" font-weight="900" fill="#2b2116" font-family="sans-serif">12</text>';
+    var ha = h * Math.PI / 6;
+    c += '<line x1="120" y1="140" x2="' + (120 + Math.sin(ha) * 42).toFixed(1) + '" y2="' + (140 - Math.cos(ha) * 42).toFixed(1) + '" stroke="#2b2116" stroke-width="9" stroke-linecap="round"/>' +
+      '<line x1="120" y1="140" x2="120" y2="78" stroke="#2b2116" stroke-width="5" stroke-linecap="round"/><circle cx="120" cy="140" r="7" fill="#d8323f"/>';
+    return '<svg viewBox="0 0 240 290" style="width:' + (w || 240) + 'px;max-width:100%;height:auto">' +
+      '<ellipse cx="120" cy="140" rx="114" ry="134" fill="#8d6a24"/><ellipse cx="120" cy="140" rx="104" ry="124" fill="#cfe9ef"/>' +
+      '<g transform="translate(240 0) scale(-1 1)">' + c + '</g>' +
+      '<path d="M44 74 Q62 40 100 30" stroke="#fff" stroke-width="9" fill="none" stroke-linecap="round" opacity=".75"/>' +
+      '<path d="M40 100 Q42 92 48 86" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" opacity=".7"/>' +
+      '<rect x="96" y="268" width="48" height="18" rx="6" fill="#5a3d1b"/></svg>';
+  }
+  function sheetsSvg(w) {
+    var s = '<svg viewBox="0 0 240 150" style="width:' + (w || 220) + 'px;height:auto">', r = NL.rng(7);
+    for (var i = 0; i < 4; i++) {
+      s += '<rect x="' + (14 + i * 10) + '" y="' + (40 + i * 8) + '" width="120" height="70" rx="6" fill="#fff" stroke="#555"/>';
+      for (var k = 0; k < 30; k++) s += '<rect x="' + (20 + i * 10 + Math.floor(r() * 108)) + '" y="' + (46 + i * 8 + Math.floor(r() * 58)) + '" width="4" height="4" fill="#1b1f4a"/>';
+    }
+    for (var j = 0; j < 3; j++) s += '<rect x="' + (110 + j * 12) + '" y="' + (16 + j * 10) + '" width="110" height="66" rx="6" fill="rgba(120,200,255,.35)" stroke="#2a6bff"/>';
+    return s + '</svg>';
+  }
+  function memSvg(color, no, w) {
+    return '<svg viewBox="0 0 120 150" style="width:' + (w || 120) + 'px;height:auto"><path d="M20 10 H80 L104 34 V140 H20Z" fill="' + color + '" stroke="#10202a" stroke-width="4"/>' +
+      '<rect x="32" y="22" width="8" height="22" fill="#ffd36b"/><rect x="46" y="22" width="8" height="22" fill="#ffd36b"/><rect x="60" y="22" width="8" height="22" fill="#ffd36b"/>' +
+      '<rect x="30" y="64" width="64" height="56" rx="6" fill="#fff" opacity=".9"/><text x="62" y="102" text-anchor="middle" font-size="34" font-weight="900" fill="' + color + '" font-family="sans-serif">' + no + '</text></svg>';
+  }
+  function pboxSvg(w) {
+    var s = '<svg viewBox="0 0 200 150" style="width:' + (w || 200) + 'px;height:auto"><path d="M20 50 L100 20 L180 50 L100 80Z" fill="#c9a23a" stroke="#6b4a22" stroke-width="3"/>' +
+      '<path d="M20 50 V120 L100 145 V80Z" fill="#a4801f" stroke="#6b4a22" stroke-width="3"/><path d="M180 50 V120 L100 145 V80Z" fill="#8a6a1a" stroke="#6b4a22" stroke-width="3"/>';
+    for (var i = 1; i < 5; i++) {
+      s += '<line x1="' + (20 + i * 16) + '" y1="' + (50 - i * 6) + '" x2="' + (100 + i * 16) + '" y2="' + (80 - i * 6) + '" stroke="#6b4a22" stroke-width="1"/>' +
+        '<line x1="' + (20 + i * 16) + '" y1="' + (50 + i * 6) + '" x2="' + (100 + i * 16) + '" y2="' + (20 + i * 6) + '" stroke="#6b4a22" stroke-width="1"/>';
+    }
+    return s + '</svg>';
+  }
+  function tankSvg(cap, amt, maxCap, hl) {
+    var H = 30 + cap * 18, top = 20 + (maxCap - cap) * 18, lv = amt / cap;
+    return '<svg viewBox="0 0 110 ' + (50 + maxCap * 18 + 20) + '" class="tank' + (hl ? ' hl' : '') + '">' +
+      '<rect x="20" y="' + top + '" width="70" height="' + H + '" rx="10" fill="#0c1b2e" stroke="#9fb6c8" stroke-width="4"/>' +
+      (amt ? '<rect x="24" y="' + (top + 4 + (H - 8) * (1 - lv)) + '" width="62" height="' + ((H - 8) * lv) + '" rx="6" fill="#ffb84a"/>' : '') +
+      '<rect x="45" y="' + (top - 8) + '" width="20" height="10" rx="3" fill="#9fb6c8"/>' +
+      '<text x="55" y="' + (top + H / 2 + 6) + '" text-anchor="middle" font-size="18" font-weight="900" fill="#fff" font-family="sans-serif" stroke="#10202a" stroke-width="3" paint-order="stroke">' + amt + 'L</text></svg>';
+  }
+  function tanksSvg(w) {
+    var J = puz().jug;
+    return '<div style="display:flex;gap:10px;justify-content:center;width:' + (w || 200) + 'px;margin:0 auto">' +
+      '<div style="flex:1">' + tankSvg(J.a, 0, J.b) + '</div><div style="flex:1">' + tankSvg(J.b, 0, J.b) + '</div></div>';
+  }
+  function medalSvg(w) {
+    var s = '<svg viewBox="0 0 160 180" style="width:' + (w || 160) + 'px;height:auto"><path d="M50 0 L80 60 L110 0Z" fill="#2a6bff"/><path d="M65 0 L80 30 L95 0Z" fill="#d8323f"/>' +
+      '<circle cx="80" cy="110" r="58" fill="#ffd36b" stroke="#c9900a" stroke-width="6"/>';
+    for (var i = 0; i < 8; i++) { var a = i * Math.PI / 4; s += '<rect x="74" y="72" width="12" height="16" fill="#c9900a" transform="rotate(' + (i * 45) + ' 80 110)"/>'; }
+    return s + '<circle cx="80" cy="110" r="26" fill="#c9900a"/><circle cx="80" cy="110" r="12" fill="#ffd36b"/></svg>';
+  }
+
+  // ---------- テスト1：光の ぼうの 式 ----------
+  function segLine(x, y, i) {
+    return [[x + 8, y, x + 52, y], [x + 60, y + 8, x + 60, y + 52], [x + 60, y + 68, x + 60, y + 112], [x + 8, y + 120, x + 52, y + 120],
+      [x, y + 68, x, y + 112], [x, y + 8, x, y + 52], [x + 8, y + 60, x + 52, y + 60]][i];
+  }
+  function msPos(k) {
+    if (k < 7) return segLine(20, 15, k);
+    if (k === 7) return [135, 53, 135, 97];
+    if (k < 15) return segLine(190, 15, k - 8);
+    return segLine(360, 15, k - 15);
+  }
+  function matchSvg(m, done) {
+    var bits = done ? NL.eqBits(m.sol.eq.a, m.sol.eq.plus, m.sol.eq.b, m.sol.eq.c) : V.ms.bits;
+    var lit = !done && (state.hints[cur().st.id] || 0) >= 3;
+    var s = '<svg viewBox="0 0 440 150" class="msvg">';
+    var bar = function (p, cls, k) {
+      return '<g class="ms ' + cls + '"' + (k != null ? ' data-ms="' + k + '"' : '') + '><line x1="' + p[0] + '" y1="' + p[1] + '" x2="' + p[2] + '" y2="' + p[3] + '" class="hit"/>' +
+        '<line x1="' + p[0] + '" y1="' + p[1] + '" x2="' + p[2] + '" y2="' + p[3] + '" class="bar"/></g>';
+    };
+    s += bar([113, 75, 157, 75], 'on fixed') + bar([283, 63, 327, 63], 'on fixed') + bar([283, 87, 327, 87], 'on fixed');
+    for (var k = 0; k < 22; k++) {
+      var cls = bits[k] ? 'on' : 'off';
+      if (!done && V.ms.picked === k) cls += ' pick';
+      if (lit && k === m.sol.from && bits[k]) cls += ' hint';
+      if (lit && k === m.sol.to && !bits[k]) cls += ' hint';
+      s += bar(msPos(k), cls, done ? null : k);
+    }
+    return '<div class="mscreen">' + s + '</svg></div>';
+  }
+  function msTap(k) {
+    var ms = V.ms; if (!ms) return;
+    var on = ms.bits[k];
+    if (ms.picked == null) {
+      if (!on) { toast(T('まず うごかす ぼうを おしてね')); return; }
+      if (ms.moved && k !== ms.moved.to) { toast(T('うごかせるのは 1本だけ。「もとに もどす」を おしてね'), 2600); return; }
+      ms.picked = k;
+    } else if (k === ms.picked) {
+      ms.picked = null;
+    } else if (on) {
+      if (ms.moved && k !== ms.moved.to) { toast(T('うごかせるのは 1本だけ。「もとに もどす」を おしてね'), 2600); return; }
+      ms.picked = k;
+    } else {
+      var from = ms.picked;
+      ms.bits[from] = false; ms.bits[k] = true;
+      var orig = ms.moved ? ms.moved.from : from;
+      ms.moved = k === orig ? null : { from: orig, to: k };
+      ms.picked = null;
+    }
+    V.wrongMsg = '';
+    sfx('key'); render();
+  }
+
+  // ---------- テスト3：かさねる シート ----------
+  var OVW = 160, OVH = 80, OVC = 2, ovCache = {};
+  function ovMask(word) {
+    if (ovCache[word]) return ovCache[word];
+    var ks = Array.from(word), half = Math.ceil(ks.length / 2);
+    var lines = ks.length <= 5 ? [ks.join('')] : [ks.slice(0, half).join(''), ks.slice(half).join('')];
+    var S = 4, c = document.createElement('canvas'); c.width = OVW * S; c.height = OVH * S;
+    var g = c.getContext('2d'); g.fillStyle = '#000'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    var maxLen = Math.max.apply(null, lines.map(function (l) { return Array.from(l).length; }));
+    var fs = Math.min(OVH * S * (lines.length === 1 ? 0.72 : 0.45), OVW * S / Math.max(3, maxLen) * 0.92);
+    g.font = '900 ' + Math.round(fs) + "px 'Zen Maru Gothic','Hiragino Maru Gothic ProN','BIZ UDPGothic',sans-serif";
+    g.strokeStyle = '#000'; g.lineWidth = fs * 0.05; g.lineJoin = 'round';
+    lines.forEach(function (l, i) {
+      var yy = lines.length === 1 ? OVH * S / 2 : OVH * S * (i ? 0.74 : 0.27);
+      g.fillText(l, OVW * S / 2, yy); g.strokeText(l, OVW * S / 2, yy);
+    });
+    var d = g.getImageData(0, 0, c.width, c.height).data, m = [];
+    for (var y = 0; y < OVH; y++) for (var x = 0; x < OVW; x++) {
+      var cnt = 0;
+      for (var yy = 0; yy < S; yy++) for (var xx = 0; xx < S; xx++) if (d[((y * S + yy) * c.width + x * S + xx) * 4 + 3] > 128) cnt++;
+      m.push(cnt > S * S * 0.3 ? 1 : 0);
+    }
+    return (ovCache[word] = m);
+  }
+  function ovTopBits(t) {
+    var r = NL.rng(((setup.seed >>> 0) ^ (t * 7919)) + 101), b = [];
+    for (var i = 0; i < OVW * OVH; i++) b.push(r() < 0.5 ? 1 : 0);
+    return b;
+  }
+  function ovBottomBits(lab, num) {
+    var p = lab.panels.filter(function (x) { return x.num === num; })[0];
+    var T = ovTopBits(p.top), M = ovMask(p.word);
+    return T.map(function (v, i) { return M[i] ? 1 - v : v; });
+  }
+  function ovPaint() {
+    var lab = puz().lab; if (!lab || !lab.ok) return;
+    Array.prototype.forEach.call(document.querySelectorAll('canvas[data-ov]'), function (cv) {
+      var top = cv.getAttribute('data-ov') === 't', key = cv.getAttribute(top ? 'data-t' : 'data-n');
+      cv.width = OVW * OVC; cv.height = OVH * OVC;
+      var g = cv.getContext('2d');
+      g.clearRect(0, 0, cv.width, cv.height);
+      if (!top) { g.fillStyle = '#fffdf4'; g.fillRect(0, 0, cv.width, cv.height); }
+      if (key === '') return;
+      var bits = top ? ovTopBits(+key) : ovBottomBits(lab, +key);
+      g.fillStyle = '#1b1f4a';
+      for (var i = 0; i < bits.length; i++) if (bits[i]) g.fillRect((i % OVW) * OVC, Math.floor(i / OVW) * OVC, OVC, OVC);
+    });
+  }
+  function overlayHtml(lab, done) {
+    var t = done ? lab.h : V.ovT, p = done ? lab.N : V.ovP, on = done || V.ovOn;
+    var h = '<div class="ov">';
+    if (!done) {
+      h += '<div class="ovpick"><b>' + T('すける シート') + '</b>' + lab.tops.map(function (x) { return '<button data-ovt="' + x + '"' + (t === x ? ' class="on"' : '') + '>🕒 ' + x + '時</button>'; }).join('') + '</div>' +
+        '<div class="ovpick"><b>' + T('パネル') + '</b>' + lab.panels.map(function (x) { return '<button data-ovp="' + x.num + '"' + (p === x.num ? ' class="on"' : '') + '>No.' + x.num + '</button>'; }).join('') + '</div>';
+    }
+    h += '<div class="ovview' + (on ? ' on' : '') + '"><div class="ovslot"><canvas data-ov="b" data-n="' + (p != null ? p : '') + '"></canvas><i>' + (p != null ? 'パネル No.' + p : T('パネルを えらんでね')) + '</i></div>' +
+      '<div class="ovslot top"><canvas data-ov="t" data-t="' + (t != null ? t : '') + '"></canvas><i>' + (t != null ? 'シート ' + t + '時' : T('シートを えらんでね')) + '</i></div></div>';
+    if (!done) h += '<button class="btn" data-act="ov-go"' + (t == null || p == null ? ' disabled' : '') + '>' + (on ? '↕ ' + T('はなす') : '⬇ ' + T('かさねる')) + '</button>';
+    return h + '</div>';
+  }
+
+  // ---------- プログラムの 箱 ----------
+  var CMD_TXT = { F: '👣 1マス すすむ', R: '↻ 右を むく', L: '↺ 左を むく' };
+  function robotHtml(rb, done) {
+    var n = rb.n, cs = 60, W = n * cs + 8;
+    var s = '<svg viewBox="0 0 ' + W + ' ' + W + '" class="rbgrid"><rect width="' + W + '" height="' + W + '" rx="10" fill="#6b4a22"/>';
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {
+      var end = done && x === rb.end[0] && y === rb.end[1];
+      s += '<rect x="' + (4 + x * cs + 2) + '" y="' + (4 + y * cs + 2) + '" width="' + (cs - 4) + '" height="' + (cs - 4) + '" rx="6" fill="' + (end ? '#ffcf4a' : '#f3e2b8') + '"/>' +
+        '<text x="' + (4 + x * cs + 8) + '" y="' + (4 + y * cs + 21) + '" font-size="16" font-weight="900" fill="#8a1a1a" font-family="sans-serif">' + rb.labels[y * n + x] + '</text>';
+    }
+    var cx = 4 + rb.start[0] * cs + cs / 2 + 6, cy = 4 + rb.start[1] * cs + cs / 2 + 6;
+    s += '<g transform="translate(' + cx + ' ' + cy + ') rotate(' + rb.dir * 90 + ') scale(.78)"><polygon points="0,-24 9,-14 -9,-14" fill="#d8323f"/>' +
+      '<rect x="-14" y="-14" width="28" height="24" rx="7" fill="#9fb6c8" stroke="#4a6274" stroke-width="2"/><circle cx="-6" cy="-6" r="3.4" fill="#3ff0ff"/><circle cx="6" cy="-6" r="3.4" fill="#3ff0ff"/></g></svg>';
+    var item = function (c) { return '<li class="cmd">' + T(CMD_TXT[c]) + '</li>'; };
+    var prog = '<ol class="rbprog">' + rb.prog.map(function (it) {
+      return typeof it === 'string' ? item(it) : '<li class="rep"><div class="rh">🔁 ' + it.rep + T('かい くりかえす') + '</div><ol>' + it.body.map(item).join('') + '</ol></li>';
+    }).join('') + '</ol>';
+    return '<div class="rbwrap">' + s + '<div class="panel rbp"><b>' + T('プログラム') + '</b>' + prog + '<p class="small">' + T('赤い 三角の ほうが ボルトの 前だよ') + '</p></div></div>';
+  }
+
+  // ---------- さいご：オイルの タンク ----------
+  function renderJugs(chHtml, st) {
+    var J = puz().jug;
+    if (!V.jug) { V.jug = [0, 0]; V.jugN = 0; }
+    var h = '<div class="puzzle-head"><span class="tag">FINAL</span><h2 style="margin:0">' + T(st.title) + '</h2></div>' +
+      '<p class="lead">' + T(st.question) + '</p><div class="jugs" id="jugs">';
+    [0, 1].forEach(function (i) {
+      var cap = i ? J.b : J.a;
+      h += '<div class="jug"><div class="jcap">' + cap + 'L ' + T('タンク') + '</div>' + tankSvg(cap, V.jug[i], J.b, V.jug[i] === J.t) +
+        '<button data-jug="fill' + i + '">⬆ ' + T('いっぱいに') + '</button><button data-jug="empty' + i + '">🗑 ' + T('からに') + '</button>' +
+        '<button data-jug="pour' + i + '">' + (i ? '⬅' : '➡') + ' ' + T('となりへ うつす') + '</button></div>';
+    });
+    h += '</div><div class="jgoal">' + T('ほしい オイル') + '：<b>' + J.t + 'L</b>　' + T('うごかした 回数') + '：' + V.jugN + '</div>' +
+      '<div class="padfn" style="grid-template-columns:1fr"><button data-act="jug-reset">↺ ' + T('さいしょから') + '</button></div>' +
+      '<div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
+    $app.innerHTML = frame(chHtml, h);
+  }
+  function jugOp(code) {
+    var J = puz().jug, st = cur().st;
+    var op = { fill0: 'fillA', fill1: 'fillB', empty0: 'emptyA', empty1: 'emptyB', pour0: 'AtoB', pour1: 'BtoA' }[code];
+    var nx = NL.jugStep(V.jug, op, J.a, J.b);
+    if (nx[0] === V.jug[0] && nx[1] === V.jug[1]) { toast(T('それでは かわらないよ')); return; }
+    V.jug = nx; V.jugN++; sfx('key');
+    if (nx[0] === J.t || nx[1] === J.t) {
+      state.cleared[st.id + ':ok'] = true; save();
+      render();
+      var el = document.getElementById('jugs'); if (el) el.classList.add('ok');
+      sfx('unlock'); flash();
+      later(function () { sfx('get'); }, 900);
+      later(function () { V.jug = null; advance(); }, 2400);
+      return;
+    }
+    render();
+  }
+
   function evArt(id, w) {
     var e = SC.evidence[id];
     if (!e) return '';
@@ -731,6 +1007,7 @@
     if (st.type === 'safe') { if (state.cleared['safe:open']) { advance(); return; } renderSafe(chHtml, st); return; }
     if (st.type === 'pad') { if (state.cleared[st.id + ':ok']) { advance(); return; } renderPad(chHtml, st); return; }
     if (st.type === 'order') { if (state.cleared[st.id + ':ok']) { advance(); return; } renderOrder(chHtml, st); return; }
+    if (st.type === 'jugs') { if (state.cleared[st.id + ':ok'] && !V.jug) { advance(); return; } renderJugs(chHtml, st); return; }
   }
 
   // ---------- もどる（すんだ ところを 見返す。進み具合は 変えない） ----------
@@ -760,11 +1037,14 @@
     if (st.type === 'puzzle') {
       var a = answerOf(st);
       if (st.input === 'choice') return NL.MESSENGERS[+a] ? NL.MESSENGERS[+a].icon + ' ' + NL.MESSENGERS[+a].name : a;
+      if (st.input === 'match') return a;
+      if (st.gen === 'mclock') return a + '時';
       return st.input === 'num' ? a : '「' + a + '」';
     }
     if (st.type === 'safe') return puz().sc.code;
     if (st.type === 'pad') return '「' + st.word + '」';
     if (st.type === 'order') return vars().lkAns;
+    if (st.type === 'jugs') return jugText(puz().jug.sol);
     return '';
   }
   function renderReview() {
@@ -786,6 +1066,7 @@
       (RV < ci - 1 ? '<button class="btn ghost" data-act="rv-next">つぎ ▶</button>' : '<span></span>') + '</div>' +
       '<button class="btn" data-act="rv-exit">▶ ' + T('いまの ところに もどる') + '</button>';
     $app.innerHTML = frame(NL.rubyHtml(NL.fill(e.ch.title, vars())), h);
+    ovPaint();
   }
   function onRewards(ids) {
     (ids || []).forEach(function (id) {
@@ -862,22 +1143,30 @@
     if (st.gen === 'balance') return P.ch && P.ch.ok ? String(P.ch.n) : '';
     if (st.gen === 'liar') return P.ch && P.ch.ok ? String(P.ch.liar.real) : '';
     if (st.gen === 'magic') return P.mg.ok ? String(P.mg.answer) : '';
+    if (st.gen === 'match') return P.lab && P.lab.ok ? NL.eqText(P.lab.match.sol.eq) : '';
+    if (st.gen === 'mclock') return P.lab && P.lab.ok ? String(P.lab.h) : '';
+    if (st.gen === 'overlay') return NL.normKana(setup.places[0].yomi);
+    if (st.gen === 'robot') return P.rb.ok ? String(P.rb.answer) : '';
     return NL.normKana(st.answer || '');
   }
   function renderPuzzle(chHtml, st) {
     var ans = answerOf(st);
     if (!V.input) V.input = [];
+    if (st.input === 'match' && !V.ms && puz().lab && puz().lab.ok) V.ms = { bits: puz().lab.match.bits.slice(), picked: null, moved: null };
     var h = '<div class="puzzle-head"><span class="tag">CODE</span><h2 style="margin:0">' + T(st.title) + '</h2></div>' +
       '<p class="lead">' + T(st.question) + '</p>' + puzzleVisual(st, false);
     if (st.input === 'choice') {
       h += '<div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
+    } else if (st.input === 'match') {
+      h += '<div class="padfn" style="grid-template-columns:1fr"><button data-act="ms-reset">↺ ' + T('もとに もどす') + '</button></div><div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
     } else {
       h += '<div class="slots" id="slots"></div><div class="wrong" id="wrong">' + (V.wrongMsg || '') + '</div>';
       h += st.input === 'num' ? numPad('pn') : kanaKeyboard();
     }
     h += '<button class="btn gold" data-act="answer">🔍 こたえる</button>';
     $app.innerHTML = frame(chHtml, h);
-    if (st.input !== 'choice') paintSlots(ans.length);
+    if (st.input !== 'choice' && st.input !== 'match') paintSlots(ans.length);
+    ovPaint();
     var tb = document.getElementById('tblbox');
     if (tb) tb.addEventListener('toggle', function () { V.tblOpen = tb.open; });
   }
@@ -909,6 +1198,14 @@
         var show = P.mg.shown.indexOf(i) >= 0;
         return '<div class="' + (i === P.mg.star ? 'star' : show ? 'num' : 'blank') + '">' + (i === P.mg.star ? (done ? v : '★') : show ? v : '') + '</div>';
       }).join('') + '</div>';
+    } else if (st.gen === 'match' && P.lab && P.lab.ok) {
+      h += matchSvg(P.lab.match, done) + (done ? '' : '<p class="small" style="text-align:center">' + T('いまの 式') + '：<b>' + esc(eqNow()) + '</b></p>');
+    } else if (st.gen === 'mclock' && P.lab && P.lab.ok) {
+      h += '<div class="mirror-wrap">' + mirrorClockSvg(P.lab.h, 230) + '</div>';
+    } else if (st.gen === 'overlay' && P.lab && P.lab.ok) {
+      h += overlayHtml(P.lab, done);
+    } else if (st.gen === 'robot' && P.rb.ok) {
+      h += robotHtml(P.rb, done);
     } else if (st.body) {
       h += '<div class="panel">' + T(st.body) + '</div>';
     }
@@ -947,7 +1244,7 @@
     for (var i = 0; i < len; i++) h += '<div class="slot' + (i === inp.length ? ' cur' : '') + (i >= n ? ' extra' : '') + '">' + esc(inp[i] || '') + '</div>';
     el.innerHTML = h;
   }
-  var KB_COLS = ['あいうえお', 'かきくけこ', 'さしすせそ', 'たちつてと', 'なにぬねの', 'はひふへほ', 'まみむめも', 'や ゆ よ', 'らりるれろ', 'わ ん  '];
+  var KB_COLS = ['あいうえお', 'かきくけこ', 'さしすせそ', 'たちつてと', 'なにぬねの', 'はひふへほ', 'まみむめも', 'や ゆ よ', 'らりるれろ', 'わ んー '];
   function kanaKeyboard() {
     var h = '<div class="kb">';
     for (var r = 0; r < 5; r++) {
@@ -985,12 +1282,25 @@
     var w = document.getElementById('wrong'); if (w) w.textContent = '';
     paintSlots(n);
   }
+  // いまの 式（光の ぼう）。数字に なっていない ところは ？
+  function eqNow() {
+    var b = V.ms ? V.ms.bits : [];
+    var d = function (off) { var m = 0; for (var i = 0; i < 7; i++) if (b[off + i]) m |= 1 << i; var k = NL.SEG7.indexOf(m); return k < 0 ? '？' : String(k); };
+    return d(0) + (b[7] ? '＋' : '−') + d(8) + '＝' + d(15);
+  }
   function submitAnswer() {
     var st = cur().st;
-    var ans = answerOf(st);
-    var got = (V.input || []).join('');
-    if (!got) { toast(st.input === 'choice' ? 'だれか 1人を えらんでね' : st.input === 'num' ? '数を 入れてね' : '文字を 入れてね'); return; }
-    if (st.input === 'num' || st.input === 'choice' ? got === ans : NL.sameAnswer(got, ans)) {
+    var ans = answerOf(st), good;
+    if (st.input === 'match') {
+      if (!V.ms || !V.ms.moved) { toast(T('ぼうを 1本 うごかしてね')); return; }
+      var e = NL.readEq(V.ms.bits);
+      good = !!(e && e.ok);
+    } else {
+      var got = (V.input || []).join('');
+      if (!got) { toast(st.input === 'choice' ? 'だれか 1人を えらんでね' : st.input === 'num' ? '数を 入れてね' : '文字を 入れてね'); return; }
+      good = st.input === 'num' || st.input === 'choice' ? got === ans : NL.sameAnswer(got, ans);
+    }
+    if (good) {
       sfx('ok');
       flash();
       state.cleared[st.id + ':solved'] = true;
@@ -1006,7 +1316,7 @@
       V.miss = (V.miss || 0) + 1;
       V.wrongMsg = V.miss >= 2 ? 'ちがうようだ……💡ヒントを 見てみよう' : 'ちがうようだ……もう一度 考えよう';
       var w = document.getElementById('wrong'); if (w) w.textContent = V.wrongMsg;
-      var s = document.getElementById('slots') || document.querySelector('.liars');
+      var s = document.getElementById('slots') || document.querySelector('.liars') || document.querySelector('.mscreen');
       if (s) { s.classList.remove('shake'); void s.offsetWidth; s.classList.add('shake'); }
       if (navigator.vibrate) try { navigator.vibrate([80, 40, 80]); } catch (e) { /* 無し */ }
     }
@@ -1508,7 +1818,7 @@
     save();
     sfx('key');
     // 発射パネルは ヒント3で ボタンが光る（うしろの画面を描き直す）
-    if (st.type === 'pad' || st.type === 'order') render();
+    if (st.type === 'pad' || st.type === 'order' || st.input === 'match') render();
     showHint();
   }
   function showMenu() {
@@ -1651,11 +1961,16 @@
     letter: ['文字ひろい（画面）', '言葉の「何文字目」をひろって並べる。D-PHONE の画面に出ます。'],
     clock: ['時計の暗号', '計算の紙と、ひらがなの時計の文字ばん。'],
     shift: ['3つの関門（画面）', '天びん → ほんものの使い → ずらし文字 の3だん。この物語では変えられません。'],
-    mirror: ['鏡文字カード', '左右反対に書いた文字を読む。'],
-    tanuki: ['たぬきカード', '「た」（または「こ」）をぬいて読む。'],
-    gojuon: ['あいうえお表カード', 'マークと数で、表から字をさがす。'],
-    arrow: ['やじるし迷路カード', 'スタートから矢印のとおりに進んで読む。'],
-    alien: ['宇宙文字カード', 'キラリ星の文字を、ほんやく表で読む。'],
+    mirror: ['鏡文字カード', '★1 左右反対に書いた文字を読む。'],
+    tanuki: ['たぬきカード', '★1 「た」（または「こ」）をぬいて読む。'],
+    gojuon: ['あいうえお表カード', '★2 マークと数で、表から字をさがす。'],
+    arrow: ['やじるし迷路カード', '★1 スタートから矢印のとおりに進んで読む。'],
+    alien: ['宇宙文字カード', '★2 キラリ星の文字を、ほんやく表で読む。'],
+    overlay: ['3つのテスト（画面）', '光のぼうの式 → かがみの時計 → かさねるシート の3だん。この物語では変えられません。'],
+    anaume: ['あなうめカード', '★3 □に入る同じ字（3つのことばで1字）を見つけて、①から読む。'],
+    wordsearch: ['かくれんぼ文字カード', '★3 表にかくれた動物・食べ物を消して、のこった字を読む。'],
+    shiritori: ['しりとりカード', '★3 ばらばらのことばをしりとりで1本につなぎ、○の字を順に読む。'],
+    sakanobori: ['さかのぼり迷路カード', '★4 スタートの書いていない矢印迷路。ゴールから逆にたどる。'],
     image: ['自分の画像', 'Googleドライブの画像か、この端末の写真。作ったカードを使えます。']
   };
   function kindOk(d, id, kind) {
@@ -1664,6 +1979,7 @@
     if (kind === 'letter') { var lp = NL.letterPuzzle(y, d.seed); return lp.ok ? '' : '「' + (lp.missing || []).join('・') + '」の言葉がない'; }
     if (kind === 'clock') return NL.clockPuzzle(y, d.seed).ok ? '' : '作れない';
     if (kind === 'shift') { var chp = NL.chainPuzzle(y, d.seed, [d.places[1].yomi]); return chp.ok ? '' : chp.reason; }
+    if (kind === 'overlay') { var lbp = NL.labPuzzle(y, d.seed, [d.places[1].yomi]); return lbp.ok ? '' : lbp.reason; }
     if (kind === 'image') return '';
     var cp = NL.cardPuzzle(kind, y, (d.seed >>> 0) + PUZ_PLACE[id]);
     return cp.ok ? '' : cp.reason;
@@ -1677,6 +1993,11 @@
       else if (st.type === 'puzzle' && st.gen === 'liar' && P.ch && P.ch.ok) a = NL.MESSENGERS[P.ch.liar.real].name + '（にせものの巻物は「' + P.ch.decoys.join('」「') + '」）';
       else if (st.type === 'puzzle' && st.gen === 'magic' && P.mg.ok) a = '★＝' + P.mg.answer;
       else if (st.type === 'order' && P.lk.ok) a = '左から ' + vars().lkAns;
+      else if (st.type === 'puzzle' && st.gen === 'match' && P.lab && P.lab.ok) a = NL.eqText(P.lab.match) + ' → ' + NL.eqText(P.lab.match.sol.eq) + '（＝の右の ' + P.lab.N + ' がパネルの番号）';
+      else if (st.type === 'puzzle' && st.gen === 'mclock' && P.lab && P.lab.ok) a = P.lab.h + '時（見たままだと ' + P.lab.mclock.shown + '時に見える）';
+      else if (st.type === 'puzzle' && st.gen === 'overlay' && P.lab && P.lab.ok) a = P.lab.h + '時のシート＋No.' + P.lab.N + 'のパネル（にせもの：' + P.lab.panels.filter(function (x) { return !x.real; }).map(function (x) { return x.top + '時＋No.' + x.num + '＝' + x.word; }).join('・') + '）';
+      else if (st.type === 'puzzle' && st.gen === 'robot' && P.rb.ok) a = String(P.rb.answer);
+      else if (st.type === 'jugs' && P.jug.ok) a = jugText(P.jug.sol);
       if (a) h += '<tr><td>' + esc(NL.plainText(st.title)) + '</td><td>' + esc(a) + '</td></tr>';
     });
     return h;
@@ -1774,6 +2095,7 @@
         var i = PUZ_PLACE[id], y = d.places[i].yomi, k = ck[id];
         if (k === 'letter') { var lp = NL.letterPuzzle(y, d.seed); return lp.items.map(function (it) { return '「' + esc(it.word) + '」の' + it.pos + '文字目'; }).join('、') + ' → <b>' + esc(lp.answer) + '</b>'; }
         if (k === 'clock') { var cp = NL.clockPuzzle(y, d.seed); return cp.seq.map(function (s) { return esc(s.expr) + '=' + s.hour + '時「' + esc(s.kana) + '」'; }).join('、') + ' → <b>' + esc(cp.answer) + '</b>'; }
+        if (k === 'shift' || k === 'overlay') return esc(KIND_INFO[k][0]) + ' → <b>' + esc(NL.normKana(y)) + '</b>';
         if (k === 'image') return '自分の画像 → <b>' + esc(NL.normKana(y)) + '</b>（画像の答えがこれになっているか確かめてください）';
         var c = NL.cardPuzzle(k, y, (d.seed >>> 0) + i);
         return esc(KIND_INFO[k][0]) + (c.kind === 'tanuki' ? '（' + esc(c.text) + ' から「' + esc(c.ch) + '」をぬく）' : '') + ' → <b>' + esc(c.answer) + '</b>';
@@ -1861,6 +2183,10 @@
     if ((el = t.closest('[data-pnf]'))) { puzNumKey(null, el.getAttribute('data-pnf')); return; }
     if ((el = t.closest('[data-choice]'))) { pickChoice(+el.getAttribute('data-choice')); return; }
     if ((el = t.closest('[data-lk]'))) { orderKey(+el.getAttribute('data-lk')); return; }
+    if ((el = t.closest('[data-ms]'))) { msTap(+el.getAttribute('data-ms')); return; }
+    if ((el = t.closest('[data-ovt]'))) { V.ovT = +el.getAttribute('data-ovt'); V.ovOn = false; sfx('key'); render(); return; }
+    if ((el = t.closest('[data-ovp]'))) { V.ovP = +el.getAttribute('data-ovp'); V.ovOn = false; sfx('key'); render(); return; }
+    if ((el = t.closest('[data-jug]'))) { jugOp(el.getAttribute('data-jug')); return; }
     if ((el = t.closest('[data-n]'))) { numKey(el.getAttribute('data-n')); return; }
     if ((el = t.closest('[data-nf]'))) { numKey(null, el.getAttribute('data-nf')); return; }
     if ((el = t.closest('[data-dial]'))) { turnDial(+el.getAttribute('data-dial'), +el.getAttribute('data-d')); return; }
@@ -1910,6 +2236,15 @@
       case 'rv-next': RV = Math.min(RV + 1, curIndex() - 1); sfx('key'); render(); window.scrollTo(0, 0); break;
       case 'rv-exit': RV = null; sfx('key'); render(); window.scrollTo(0, 0); break;
       case 'lk-go': orderGo(); break;
+      case 'ms-reset': V.ms = null; V.wrongMsg = ''; sfx('key'); render(); break;
+      case 'ov-go': {
+        if (V.ovT == null || V.ovP == null) { toast(T('シートと パネルを 1まいずつ えらんでね')); return; }
+        V.ovOn = !V.ovOn; sfx(V.ovOn ? 'lock' : 'key');
+        var vw = document.querySelector('.ovview'), bt = el;
+        if (vw) { vw.classList.toggle('on', V.ovOn); bt.innerHTML = V.ovOn ? '↕ ' + T('はなす') : '⬇ ' + T('かさねる'); }
+        break;
+      }
+      case 'jug-reset': V.jug = [0, 0]; V.jugN = 0; sfx('key'); render(); break;
       case 'lk-bs': if (V.ord) V.ord.pop(); sfx('key'); render(); break;
       case 'lk-clr': V.ord = []; sfx('key'); render(); break;
       case 'case-cert': selectCase(el.getAttribute('data-case')); route = 'cert'; render(); window.scrollTo(0, 0); break;

@@ -551,3 +551,51 @@ h3 { font-size: 17px; color: var(--gold); }
 .lock .padfn button { border-color: var(--gold); color: var(--gold); background: #1a0d0f; }
 .lock.ok { border-color: #48ff9b; box-shadow: 0 0 30px rgba(72, 255, 155, .6); }
 .lock.ok .lslots .ls { border-color: #48ff9b; border-style: solid; }
+
+/* ---------- ロボット研究所 ---------- */
+.bolt-photo { transform: rotate(-1.5deg); }
+.mscreen { background: #071018; border: 2px solid #1aa6c4; border-radius: 16px; padding: 10px 6px; margin: 10px 0; box-shadow: 0 0 18px rgba(63, 240, 255, .25) inset; }
+.msvg { width: 100%; height: auto; display: block; touch-action: manipulation; }
+.ms { cursor: pointer; }
+.ms .hit { stroke: transparent; stroke-width: 26; stroke-linecap: round; }
+.ms .bar { stroke-linecap: round; }
+.ms.on .bar { stroke: #3ff0ff; stroke-width: 10; filter: drop-shadow(0 0 4px rgba(63, 240, 255, .9)); }
+.ms.off .bar { stroke: #1d3a44; stroke-width: 5; stroke-dasharray: 3 6; }
+.ms.fixed { cursor: default; }
+.ms.fixed .bar { stroke: #9fdcec; }
+.ms.pick .bar { stroke: #ffd36b; filter: drop-shadow(0 0 7px rgba(255, 211, 107, 1)); animation: blink .7s infinite alternate; }
+.ms.hint .bar { stroke: #ff9a3a; stroke-dasharray: none; stroke-width: 9; animation: blink .6s infinite alternate; }
+@keyframes blink { from { opacity: 1; } to { opacity: .45; } }
+.mirror-wrap { text-align: center; margin: 8px 0; }
+.ov { margin: 10px 0; }
+.ovpick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.ovpick b { width: 100%; font-size: 14px; color: var(--muted); font-weight: normal; }
+.ovpick button { flex: 1 1 22%; min-width: 64px; height: 42px; border-radius: 10px; border: 1px solid var(--cyan2); background: var(--panel2); color: var(--text); font-size: 16px; cursor: pointer; }
+.ovpick button.on { background: var(--cyan); color: #03060c; font-weight: bold; }
+.ovview { position: relative; margin: 10px 0; padding-bottom: calc(50% + 14px); transition: padding-bottom 1s cubic-bezier(.3, .8, .3, 1); }
+.ovview.on { padding-bottom: 0; }
+.ovslot { position: relative; border-radius: 10px; overflow: hidden; border: 2px solid #5a6b7a; }
+.ovslot canvas { display: block; width: 100%; height: auto; }
+.ovslot.top canvas { background: rgba(160, 215, 255, .12); }
+.ovview.on .ovslot.top canvas { background: transparent; }
+.ovslot i { position: absolute; left: 6px; top: 4px; font-style: normal; font-size: 12px; background: rgba(3, 6, 12, .75); color: var(--text); padding: 0 6px; border-radius: 6px; }
+.ovslot.top { position: absolute; left: 0; right: 0; top: 0; border-color: #2a6bff; transform: translateY(calc(100% + 10px)); transition: transform 1s cubic-bezier(.3, .8, .3, 1); z-index: 2; }
+.ovview.on .ovslot.top { transform: none; }
+.ovview.on .ovslot.top i { opacity: 0; }
+.rbwrap { display: grid; gap: 10px; margin: 10px 0; }
+.rbgrid { width: 100%; max-width: 320px; height: auto; margin: 0 auto; display: block; }
+.rbp { margin: 0; }
+.rbprog { margin: 6px 0 0; padding-left: 1.6em; }
+.rbprog li { margin: 4px 0; }
+.rbprog .rep { list-style: none; margin-left: -1.2em; border: 2px solid var(--gold); border-radius: 10px; padding: 4px 8px 6px; }
+.rbprog .rep .rh { color: var(--gold); font-weight: bold; }
+.rbprog .rep ol { padding-left: 1.4em; margin: 2px 0 0; }
+.jugs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; padding: 10px; border-radius: 16px; border: 2px solid #9fb6c8; background: #08121f; }
+.jugs.ok { border-color: var(--green); box-shadow: 0 0 24px rgba(72, 255, 155, .5); }
+.jug { display: grid; gap: 6px; text-align: center; }
+.jcap { font-weight: bold; color: var(--gold); }
+.jug .tank { width: 100%; max-width: 130px; height: auto; margin: 0 auto; display: block; }
+.jug .tank.hl rect:first-child { stroke: var(--green); }
+.jug button { height: 40px; border-radius: 10px; border: 1px solid #ffb84a; background: #1a1206; color: #ffd9a0; font-size: 15px; cursor: pointer; }
+.jgoal { text-align: center; margin: 6px 0; }
+.jgoal b { color: var(--gold); font-size: 22px; }
