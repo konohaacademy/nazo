@@ -167,7 +167,7 @@
     if (cp.kind === 'anaume') return { r1: cp.rows[0].words.map(NL.anaumeBlank).join('・'), k: cp.rows[0].kana };
     if (cp.kind === 'wordsearch') return { cat: cp.cat, w1: cp.words[0], w2: cp.words[1], wn: cp.words.length };
     if (cp.kind === 'shiritori') return { s1: cp.chain[0].show, s2: cp.chain[1].show };
-    if (cp.kind === 'sakanobori') { var aa = Array.from(cp.answer); return { g: aa[aa.length - 1], p: aa[aa.length - 2] }; }
+    if (cp.kind === 'sakanobori') { var aa = Array.from(cp.answer); return { g: aa[aa.length - 1], n: cp.paths, s: aa[0] }; }
     return {};
   }
   // カードの絵（暗号その1＝0・その2＝1）
@@ -1964,13 +1964,13 @@
     mirror: ['鏡文字カード', '★1 左右反対に書いた文字を読む。'],
     tanuki: ['たぬきカード', '★1 「た」（または「こ」）をぬいて読む。'],
     gojuon: ['あいうえお表カード', '★2 マークと数で、表から字をさがす。'],
-    arrow: ['やじるし迷路カード', '★1 スタートから矢印のとおりに進んで読む。'],
+    arrow: ['やじるし迷路カード', '★2 スタートが3つ。どれもゴールに着くが、ことばになる道は1つだけ。'],
     alien: ['宇宙文字カード', '★2 キラリ星の文字を、ほんやく表で読む。'],
     overlay: ['3つのテスト（画面）', '光のぼうの式 → かがみの時計 → かさねるシート の3だん。この物語では変えられません。'],
     anaume: ['あなうめカード', '★3 □に入る同じ字（3つのことばで1字）を見つけて、①から読む。'],
     wordsearch: ['かくれんぼ文字カード', '★3 表にかくれた動物・食べ物を消して、のこった字を読む。'],
     shiritori: ['しりとりカード', '★3 ばらばらのことばをしりとりで1本につなぎ、○の字を順に読む。'],
-    sakanobori: ['さかのぼり迷路カード', '★4 スタートの書いていない矢印迷路。ゴールから逆にたどる。'],
+    sakanobori: ['さかのぼり迷路カード', '★4 スタートの書いていない矢印迷路。ゴールから逆にたどると道がわかれ、ことばになる道は1つだけ。'],
     image: ['自分の画像', 'Googleドライブの画像か、この端末の写真。作ったカードを使えます。']
   };
   function kindOk(d, id, kind) {

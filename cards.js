@@ -20,7 +20,7 @@
     mirror: 'かがみの むこうの 文字を 読め',
     tanuki: '絵の どうぶつが ヒントだ',
     gojuon: 'あいうえお表で 読みとけ',
-    arrow: 'スタートから やじるしの とおりに 進め',
+    arrow: 'スタートは 3つ。ことばに なる 道を 読め',
     alien: 'キラリ星の 文字を ほんやく せよ',
     anaume: '□に 入る 字を つなげて 読め',
     wordsearch: 'かくれた ことばを 消して 読め',
@@ -290,7 +290,7 @@
 
   // ---------- やじるし迷路 ----------
   function arrow(cp) {
-    var n = cp.size, cell = n === 4 ? 118 : 98, gap = n === 4 ? 10 : 8, w = n * cell + (n - 1) * gap;
+    var n = cp.size, cell = n === 4 ? 118 : n === 5 ? 98 : 84, gap = n === 4 ? 10 : n === 5 ? 8 : 7, w = n * cell + (n - 1) * gap;
     var x0 = 600 - w / 2, y0 = 462 - w / 2;
     var h = '<rect x="' + (x0 - 18) + '" y="' + (y0 - 18) + '" width="' + (w + 36) + '" height="' + (w + 36) + '" rx="18" fill="#5a3d1b" opacity=".12"/>';
     var ROT = { r: 0, d: 90, l: 180, u: 270 };
@@ -418,9 +418,9 @@
 
   // ---------- さかのぼり迷路（スタートが かいていない） ----------
   function sakanobori(cp) {
-    var n = cp.size, cell = n === 4 ? 112 : 94, gap = n === 4 ? 10 : 8, w = n * cell + (n - 1) * gap;
+    var n = cp.size, cell = n === 4 ? 112 : n === 5 ? 94 : 80, gap = n === 4 ? 10 : n === 5 ? 8 : 7, w = n * cell + (n - 1) * gap;
     var x0 = 600 - w / 2, y0 = 488 - w / 2;
-    var h = note(['スタートの しるしが 消されてしまった！', 'ゴールに たどりつく 道は 1本だけ。その 道の 字を 読め'], 150, 24);
+    var h = note(['スタートの しるしが 消されてしまった！', 'ゴールに つく 道は いくつも ある。ことばに なる 道を 読め'], 150, 24);
     h += '<rect x="' + (x0 - 18) + '" y="' + (y0 - 18) + '" width="' + (w + 36) + '" height="' + (w + 36) + '" rx="18" fill="#5a3d1b" opacity=".12"/>';
     var ROT = { r: 0, d: 90, l: 180, u: 270 };
     for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {

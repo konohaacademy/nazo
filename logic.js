@@ -215,43 +215,12 @@
       return { ok: true, kind: kind, answer: answer, table: GOJUON, shapes: shapes, codes: codes };
     }
     if (kind === 'arrow') {
-      // やじるし迷路：スタートから矢印のとおりに進むと読みが出る。ほかの マスは まぎらわしい字と矢印
-      var size = ks.length <= 5 ? 4 : 5;
-      for (var tries = 0; tries < 400; tries++) {
-        var path = [], used = {}, x = Math.floor(r() * size), y = Math.floor(r() * size);
-        path.push([x, y]); used[x + ',' + y] = 1;
-        var okp = true;
-        while (path.length < ks.length) {
-          var dirs = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]], r).filter(function (d) {
-            var nx = x + d[0], ny = y + d[1];
-            return nx >= 0 && ny >= 0 && nx < size && ny < size && !used[nx + ',' + ny];
-          });
-          if (!dirs.length) { okp = false; break; }
-          x += dirs[0][0]; y += dirs[0][1]; path.push([x, y]); used[x + ',' + y] = 1;
-        }
-        if (!okp) continue;
-        var grid = [], pool = shuffle(WORDS.join('').split('').filter(function (c) { return ks.indexOf(c) < 0; }), r);
-        var ARW = { '1,0': 'r', '-1,0': 'l', '0,1': 'd', '0,-1': 'u' };
-        for (var yy = 0; yy < size; yy++) {
-          var row = [];
-          for (var xx = 0; xx < size; xx++) {
-            var dd = shuffle(['r', 'l', 'd', 'u'], r).filter(function (a) {
-              var nx = xx + (a === 'r' ? 1 : a === 'l' ? -1 : 0), ny = yy + (a === 'd' ? 1 : a === 'u' ? -1 : 0);
-              return nx >= 0 && ny >= 0 && nx < size && ny < size;
-            });
-            row.push({ kana: pool.pop() || 'ぬ', dir: dd[0] });
-          }
-          grid.push(row);
-        }
-        path.forEach(function (pt, i) {
-          var c = grid[pt[1]][pt[0]];
-          c.kana = ks[i];
-          c.dir = i < path.length - 1 ? ARW[(path[i + 1][0] - pt[0]) + ',' + (path[i + 1][1] - pt[1])] : 'goal';
-        });
-        grid[path[0][1]][path[0][0]].start = true;
-        return { ok: true, kind: kind, answer: answer, size: size, grid: grid, start: path[0], path: path };
-      }
-      return { ok: false, reason: '迷路が作れませんでした' };
+      // やじるし迷路：スタートが 3つ。どれも ゴールに つくが、とおった 字が ことばに なるのは 1つだけ
+      var L0 = ks.length;
+      return branchMaze(ks, L0 <= 4 ? 4 : L0 <= 7 ? 5 : 6, r, {
+        kind: 'arrow', decoys: 2, cycles: false, minLen: Math.max(2, L0 - 1), maxLen: L0 + 1,
+        pool: WORDS.join('').split('').filter(function (c) { return ks.indexOf(c) < 0 && c !== 'ー'; })
+      });
     }
     if (kind === 'alien') {
       var msg = [];
@@ -788,89 +757,169 @@
     return cp.chain.filter(function (c) { return c.at >= 0; }).map(function (c) { return Array.from(c.w)[c.at]; }).join('');
   }
 
-  // ---------- さかのぼり迷路カード：スタートが かいていない やじるし迷路 ----------
-  // どの マスも、さしてくる やじるしは 1本まで。ゴールに つく 道は 1本だけで、ほかの マスは ぐるぐる まわる 輪。
-  // → ゴールから やじるしを さかのぼると、だれにも さされていない マス（＝スタート）に つく
+  // ---------- やじるし迷路の しくみ（やじるし迷路・さかのぼり迷路で 同じ） ----------
+  // ゴールに つく 道が いくつも ある（答えの 道や ほかの 道に、とちゅうから 合流する）。
+  // どの 道も 読めるが、ことばに なるのは 答えの 道 1本だけ（ほかの 道の 読みは 辞書に ない。濁点・小さい字の ちがいも 見る）。
   var ARW_OF = { '1,0': 'r', '-1,0': 'l', '0,1': 'd', '0,-1': 'u' };
-  function sakanoboriPuzzle(yomi, seed) {
-    var ks = kanaList(yomi), L = ks.length, ans = ks.join('');
-    if (L < 3) return { ok: false, reason: '2文字の 読みでは 迷路が かんたんすぎます' };
-    var n = L % 2 === 0 ? 4 : 5;
-    var r = rng(((Number(seed) >>> 0) ^ 0x5A1C) + 23);
-    for (var tries = 0; tries < 800; tries++) {
-      // 道
-      var path = [], on = {}, x = Math.floor(r() * n), y = Math.floor(r() * n), okp = true;
-      path.push([x, y]); on[x + ',' + y] = 1;
+  // ほかの 道の 字（ぱ行・ぬ・へ などの めずらしい 字は 入れない。見ただけで ことばで ないと わかって しまうので）
+  var MAZE_KANA = Array.from('あいうえおかきくけこさしすせそたちつてとなにのはひふほまみめもやゆよらりるれろわんがぎぐござじずだでどばびぶ');
+  var _loose = null;
+  function looseKey(w) { return Array.from(w).map(baseKana).join(''); }
+  // ことばか（辞書に あるか。「は」と「ば」、「や」と「ゃ」の ちがいだけの ものも ことばと みる）
+  function isWordish(w) {
+    var d = WD().dict;
+    if (d[w]) return true;
+    if (!_loose) { _loose = {}; Object.keys(d).forEach(function (x) { _loose[looseKey(x)] = 1; }); }
+    return !!_loose[looseKey(w)];
+  }
+  // opt：decoys＝ほかの 道の 数／cycles＝のこりの マスを ぐるぐる まわる 輪に する（さかのぼり迷路）／minLen・maxLen＝ほかの 道の 字数／pool＝のこりの マスの 字
+  function branchMaze(ks, n, r, opt) {
+    var L = ks.length, ans = ks.join('');
+    var key = function (x, y) { return x + ',' + y; };
+    var pt = function (k) { return k.split(',').map(Number); };
+    var inb = function (x, y) { return x >= 0 && y >= 0 && x < n && y < n; };
+    var D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (var tries = 0; tries < 1500; tries++) {
+      // 答えの 道
+      var path = [], nxt = {}, kana = {}, suf = {}, used = {}, x = Math.floor(r() * n), y = Math.floor(r() * n), okp = true;
+      path.push([x, y]); used[key(x, y)] = 1;
       while (path.length < L) {
-        var ds = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]], r).filter(function (d) {
-          var nx = x + d[0], ny = y + d[1]; return nx >= 0 && ny >= 0 && nx < n && ny < n && !on[nx + ',' + ny];
-        });
+        var ds = shuffle(D4, r).filter(function (d) { return inb(x + d[0], y + d[1]) && !used[key(x + d[0], y + d[1])]; });
         if (!ds.length) { okp = false; break; }
-        x += ds[0][0]; y += ds[0][1]; path.push([x, y]); on[x + ',' + y] = 1;
+        x += ds[0][0]; y += ds[0][1]; path.push([x, y]); used[key(x, y)] = 1;
       }
       if (!okp) continue;
-      // のこりを 2マスずつ ならべる（ドミノ）
-      var free = [], nxt = {}, cyc = {}, id = 0;
-      for (var yy = 0; yy < n; yy++) for (var xx = 0; xx < n; xx++) if (!on[xx + ',' + yy]) free.push(xx + ',' + yy);
-      var taken = {}, nodes = 0;
-      var tile = function () {
-        if (nodes++ > 2000) return false;
-        var f = null;
-        for (var i = 0; i < free.length; i++) if (!taken[free[i]]) { f = free[i]; break; }
-        if (!f) return true;
-        var p = f.split(',').map(Number);
-        var ps = shuffle([[1, 0], [0, 1], [-1, 0], [0, -1]], r);
-        for (var k = 0; k < ps.length; k++) {
-          var q = (p[0] + ps[k][0]) + ',' + (p[1] + ps[k][1]);
-          if (free.indexOf(q) < 0 || taken[q]) continue;
-          taken[f] = taken[q] = 1; nxt[f] = q; nxt[q] = f; cyc[f] = cyc[q] = id++;
-          if (tile()) return true;
-          taken[f] = taken[q] = 0; delete nxt[f]; delete nxt[q];
+      path.forEach(function (p, i) {
+        var k = key(p[0], p[1]); kana[k] = ks[i]; suf[k] = ks.slice(i).join('');
+        if (i < L - 1) nxt[k] = key(path[i + 1][0], path[i + 1][1]);
+      });
+      // ほかの 道：合流する マス（答えの 道の 2マス目から先・ほかの 道の とちゅう）から 外へ のばす
+      var targets = path.slice(1).map(function (p) { return key(p[0], p[1]); });
+      var starts = [key(path[0][0], path[0][1])], reads = [ans], made = 0, guard = 0;
+      while (made < opt.decoys && guard++ < 80) {
+        var t = targets[Math.floor(r() * targets.length)];
+        var tl = opt.minLen + Math.floor(r() * (opt.maxLen - opt.minLen + 1));
+        var b = tl - Array.from(suf[t]).length;
+        if (b < 1 || b > 4) continue;
+        var cells = [], cur = pt(t), taken = {}, ok2 = true;
+        for (var s2 = 0; s2 < b; s2++) {
+          var cand = shuffle(D4, r).map(function (d) { return [cur[0] + d[0], cur[1] + d[1]]; })
+            .filter(function (q) { return inb(q[0], q[1]) && !used[key(q[0], q[1])] && !taken[key(q[0], q[1])]; });
+          if (!cand.length) { ok2 = false; break; }
+          cur = cand[0]; cells.push(key(cur[0], cur[1])); taken[key(cur[0], cur[1])] = 1;
         }
-        return false;
-      };
-      if (!tile()) continue;
-      // となりあう 輪を つなげて 大きな 輪に する（2マスで さしあう ところを へらす）
-      var adj = function (a, b) { var A = a.split(',').map(Number), B = b.split(',').map(Number); return Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]) === 1; };
-      for (var round = 0; round < 40; round++) {
-        var keys = shuffle(Object.keys(nxt), r), done = false;
-        for (var i2 = 0; i2 < keys.length && !done; i2++) {
-          var u = keys[i2], v = nxt[u];
-          for (var j2 = 0; j2 < keys.length && !done; j2++) {
-            var yk = keys[j2], xk = nxt[yk];
-            if (cyc[yk] === cyc[u] || !adj(u, xk) || !adj(yk, v)) continue;
-            // u→v と y→x を、u→x と y→v に かえる（2つの 輪が 1つに なる）
-            nxt[u] = xk; nxt[yk] = v;
-            var old = cyc[yk];
-            Object.keys(cyc).forEach(function (c) { if (cyc[c] === old) cyc[c] = cyc[u]; });
-            done = true;
-          }
+        if (!ok2) continue;
+        // 字：その 道の 読みが ことばに ならない ものを 選ぶ（答えの 字も まぜて、まぎらわしく する）
+        var letters = null;
+        for (var lt = 0; lt < 60 && !letters; lt++) {
+          var ls = cells.map(function () {
+            var c = r() < 0.45 ? ks[Math.floor(r() * L)] : '';
+            if (!c || MAZE_KANA.indexOf(c) < 0) c = MAZE_KANA[Math.floor(r() * MAZE_KANA.length)];
+            return c;
+          });
+          var head = ls.slice().reverse();   // cells[0] が 合流先の となり・cells[b-1] が スタート
+          if (head[0] === 'ん') continue;
+          var rd = head.join('') + suf[t];
+          if (reads.indexOf(rd) >= 0 || isWordish(rd)) continue;
+          letters = ls; reads.push(rd);
         }
-        if (!done || r() < 0.08) break;
+        if (!letters) continue;
+        cells.forEach(function (c, i) {
+          used[c] = 1; kana[c] = letters[i]; nxt[c] = i ? cells[i - 1] : t;
+          suf[c] = letters.slice(0, i + 1).reverse().join('') + suf[t];
+          if (i < b - 1) targets.push(c);
+        });
+        starts.push(cells[b - 1]);
+        made++;
       }
-      // 字
-      var pool = shuffle(WORDS.join('').split('').filter(function (c) { return c !== 'ー'; }), r);
+      if (made < opt.decoys) continue;
+      // のこりの マス
+      var free = [];
+      for (var yy = 0; yy < n; yy++) for (var xx = 0; xx < n; xx++) if (!used[key(xx, yy)]) free.push(key(xx, yy));
+      if (opt.cycles) {
+        if (!cycleCover(free, nxt, r, pt)) continue;
+        // 2マスで さしあう 組が 多すぎると 輪が すぐ 見える
+        var pairs = 0;
+        free.forEach(function (k) { if (nxt[nxt[k]] === k) pairs++; });
+        if (pairs / 2 > Math.ceil(free.length / 8)) continue;
+      } else {
+        free.forEach(function (k) {
+          var p = pt(k), d = shuffle(D4, r).filter(function (d2) { return inb(p[0] + d2[0], p[1] + d2[1]); })[0];
+          nxt[k] = key(p[0] + d[0], p[1] + d[1]);
+        });
+      }
+      var pool = shuffle(opt.pool.slice(), r);
+      free.forEach(function (k) { kana[k] = pool.pop() || 'ぬ'; });
+      var isStart = {};
+      starts.forEach(function (k) { isStart[k] = 1; });
       var grid = [];
       for (var gy = 0; gy < n; gy++) {
         var row = [];
         for (var gx = 0; gx < n; gx++) {
-          var key = gx + ',' + gy;
-          if (on[key]) { row.push(null); continue; }
-          var to = nxt[key].split(',').map(Number);
-          row.push({ kana: pool.pop() || 'ぬ', dir: ARW_OF[(to[0] - gx) + ',' + (to[1] - gy)] });
+          var k2 = key(gx, gy), cell = { kana: kana[k2] };
+          if (!nxt[k2]) cell.dir = 'goal';
+          else { var to = pt(nxt[k2]); cell.dir = ARW_OF[(to[0] - gx) + ',' + (to[1] - gy)]; }
+          if (opt.kind === 'arrow' && isStart[k2]) cell.start = true;
+          row.push(cell);
         }
         grid.push(row);
       }
-      path.forEach(function (pt, i) {
-        grid[pt[1]][pt[0]] = { kana: ks[i], dir: i < path.length - 1 ? ARW_OF[(path[i + 1][0] - pt[0]) + ',' + (path[i + 1][1] - pt[1])] : 'goal' };
-      });
-      // 2マスで さしあう 組が 多すぎると 道が すぐ 見える
-      var pairs = 0;
-      Object.keys(nxt).forEach(function (k) { if (nxt[nxt[k]] === k) pairs++; });
-      if (pairs / 2 > Math.ceil(free.length / 8)) continue;
-      return { ok: true, kind: 'sakanobori', answer: ans, size: n, grid: grid, start: path[0], path: path };
+      return { ok: true, kind: opt.kind, answer: ans, size: n, grid: grid, start: path[0], path: path,
+        starts: shuffle(starts, r).map(pt), paths: starts.length };
     }
-    return { ok: false, reason: 'さかのぼり迷路が 作れません' };
+    return { ok: false, reason: opt.kind === 'arrow' ? '迷路が作れませんでした' : 'さかのぼり迷路が 作れません' };
+  }
+  // のこりの マスを、ぐるぐる まわる 輪で うめる（まず 2マスずつ ならべ、となりあう 輪を つなげて 大きく する）
+  function cycleCover(free, nxt, r, pt) {
+    var inFree = {}, taken = {}, cyc = {}, id = 0, nodes = 0;
+    free.forEach(function (k) { inFree[k] = 1; });
+    var tile = function () {
+      if (nodes++ > 2000) return false;
+      var f = null;
+      for (var i = 0; i < free.length; i++) if (!taken[free[i]]) { f = free[i]; break; }
+      if (!f) return true;
+      var p = pt(f), ps = shuffle([[1, 0], [0, 1], [-1, 0], [0, -1]], r);
+      for (var k = 0; k < ps.length; k++) {
+        var q = (p[0] + ps[k][0]) + ',' + (p[1] + ps[k][1]);
+        if (!inFree[q] || taken[q]) continue;
+        taken[f] = taken[q] = 1; nxt[f] = q; nxt[q] = f; cyc[f] = cyc[q] = id++;
+        if (tile()) return true;
+        taken[f] = taken[q] = 0; delete nxt[f]; delete nxt[q];
+      }
+      return false;
+    };
+    if (!tile()) return false;
+    var adj = function (a, b) { var A = pt(a), B = pt(b); return Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]) === 1; };
+    for (var round = 0; round < 40; round++) {
+      var keys = shuffle(free.slice(), r), done = false;
+      for (var i2 = 0; i2 < keys.length && !done; i2++) {
+        var u = keys[i2], v = nxt[u];
+        for (var j2 = 0; j2 < keys.length && !done; j2++) {
+          var yk = keys[j2], xk = nxt[yk];
+          if (cyc[yk] === cyc[u] || !adj(u, xk) || !adj(yk, v)) continue;
+          // u→v と y→x を、u→x と y→v に かえる（2つの 輪が 1つに なる）
+          nxt[u] = xk; nxt[yk] = v;
+          var old = cyc[yk];
+          free.forEach(function (c) { if (cyc[c] === old) cyc[c] = cyc[u]; });
+          done = true;
+        }
+      }
+      if (!done || r() < 0.08) break;
+    }
+    return true;
+  }
+
+  // ---------- さかのぼり迷路カード：スタートが かいていない やじるし迷路 ----------
+  // ゴールから さかのぼると 道が わかれる。わかれた 先を ぜんぶ たどると、だれにも さされていない マス（スタートの 候補）が いくつか ある。
+  // その 道を 読み くらべて、ことばに なる 1本を えらぶ。ほかの マスは ぐるぐる まわる 輪（ゴールに つかない）
+  function sakanoboriPuzzle(yomi, seed) {
+    var ks = kanaList(yomi), L = ks.length;
+    if (L < 3) return { ok: false, reason: '2文字の 読みでは 迷路が かんたんすぎます' };
+    var r = rng(((Number(seed) >>> 0) ^ 0x5A1C) + 23);
+    return branchMaze(ks, L <= 4 ? 4 : L <= 7 ? 5 : 6, r, {
+      kind: 'sakanobori', decoys: L <= 3 ? 2 : (r() < 0.5 ? 2 : 3), cycles: true, minLen: Math.max(3, L - 1), maxLen: L + 2,
+      pool: WORDS.join('').split('').filter(function (c) { return c !== 'ー'; })
+    });
   }
   function cellNext(cp, x, y) {
     var c = cp.grid[y][x];
@@ -1168,7 +1217,7 @@
     kanaList: kanaList, isHiraOnly: isHiraOnly, rng: rng, shuffle: shuffle,
     WORDS: WORDS, letterPuzzle: letterPuzzle, CARD_KINDS: CARD_KINDS, cardPuzzle: cardPuzzle, walkArrow: walkArrow, readAlien: readAlien, ALIEN_KANA: ALIEN_KANA, ALIEN_GLYPHS: ALIEN_GLYPHS, alienIndex: alienIndex, baseKana: baseKana, markOf: markOf, readGojuon: readGojuon, gojuonPos: gojuonPos, clockPuzzle: clockPuzzle, makeExpr: makeExpr, evalExpr: evalExpr,
     KANA46: KANA46, balancePuzzle: balancePuzzle, balanceWeight: balanceWeight, MESSENGERS: MESSENGERS, liarPuzzle: liarPuzzle, liarSolutions: liarSolutions, chainPuzzle: chainPuzzle, readShift: readShift, magicPuzzle: magicPuzzle, MG_LINES: MG_LINES, MG_SQUARES: MG_SQUARES, LOCK_ITEMS: LOCK_ITEMS, orderPuzzle: orderPuzzle, lockSolutions: lockSolutions,
-    WD: WD, showWord: showWord, KANA_ALL: KANA_ALL, anaumeFits: anaumeFits, anaumeBlank: anaumeBlank, shiritoriPaths: shiritoriPaths, readShiritori: readShiritori, shiriLink: shiriLink, inDegrees: inDegrees, cellNext: cellNext,
+    WD: WD, showWord: showWord, KANA_ALL: KANA_ALL, anaumeFits: anaumeFits, anaumeBlank: anaumeBlank, shiritoriPaths: shiritoriPaths, readShiritori: readShiritori, shiriLink: shiriLink, inDegrees: inDegrees, cellNext: cellNext, isWordish: isWordish,
     SEG7: SEG7, eqBits: eqBits, readEq: readEq, eqText: eqText, matchPool: matchPool, matchPuzzle: matchPuzzle, mirrorClockPuzzle: mirrorClockPuzzle, labPuzzle: labPuzzle, overlayWord: overlayWord,
     robotPuzzle: robotPuzzle, runProg: runProg, robotHint: robotHint, jugPuzzle: jugPuzzle, jugPool: jugPool, jugStep: jugStep, jugSolve: jugSolve, JUG_OPS: JUG_OPS,
     sceneCode: sceneCode, encodeTag: encodeTag, decodeTag: decodeTag, safeCode: safeCode,
